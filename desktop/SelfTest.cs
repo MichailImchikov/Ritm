@@ -38,6 +38,7 @@ namespace Ritm {
     smart=SmartInput.Parse("Сдать отчёт 15.01",thursday,null);Assert(smart.Date=="2027-01-15"&&smart.Title=="Сдать отчёт","smart input: past day-month rolls to next year");smart=SmartInput.Parse("завтра",thursday,null);Assert(smart.Title=="завтра"&&smart.Date==null,"smart input: lone keyword stays a title");smart=SmartInput.Parse("Купить хлеб",thursday,null);Assert(!smart.HasExtras&&smart.Title=="Купить хлеб","smart input: plain text");
     smart=SmartInput.Parse("Идея #Новый_проект",thursday,null);Assert(smart.Project=="Новый проект","smart input: new project with underscore");
     smart=SmartInput.Parse("Сверить отчёт @иван завтра",thursday,null,new[]{"Иван"});Assert(smart.Assignee=="Иван"&&smart.Title=="Сверить отчёт"&&smart.Date=="2026-10-30","smart input: assignee");
+    Assert(Store.WindowsName()!=null,"default member name from Windows account");
     var server=Path.Combine(root,"server","Отдел");Directory.CreateDirectory(server);var anna=new Store(Path.Combine(root,"anna"));var ivan=new Store(Path.Combine(root,"ivan"));
     Fails(()=>anna.ConnectTeam(server,"Отдел"," "),"team requires user name");anna.ConnectTeam(server,"Отдел","Анна");var probe=Store.ProbeTeam(server);Assert(probe.Exists&&probe.Name=="Отдел"&&probe.Members.Contains("Анна"),"team folder created with member");
     ivan.CreateProject("Отдел");Fails(()=>ivan.ConnectTeam(server,null,"Иван"),"clash with personal project rejected");ivan.DeleteProject("Отдел");

@@ -24,6 +24,12 @@ namespace Ritm {
   public bool IsTeamName(string name){return Team(name)!=null;}
   public IEnumerable<string> TeamNames {get{return Teams.Select(t=>t.Name).OrderBy(n=>n).ToList();}}
   public string Me(string project){var t=Team(project);return t==null?null:t.User;}
+  [System.Runtime.InteropServices.DllImport("secur32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode)] static extern bool GetUserNameEx(int format,StringBuilder name,ref int size);
+  // Имя по умолчанию — отображаемое имя учётной записи Windows, иначе логин.
+  public static string WindowsName(){
+   try{int size=256;var b=new StringBuilder(size);if(GetUserNameEx(3,b,ref size)){var n=TaskItem.Person(b.ToString());if(n!=null)return n;}}catch{}
+   return TaskItem.Person(Environment.UserName);
+  }
   public static bool SamePerson(string a,string b){return a!=null&&b!=null&&string.Equals(a,b,StringComparison.CurrentCultureIgnoreCase);}
   // Личные задачи всегда «мои»; задачи общего проекта — если исполнитель совпадает с моим именем в этом проекте.
   public bool IsMine(TaskItem t){var team=Team(t.category);return team==null||SamePerson(t.assignee,team.User);}
