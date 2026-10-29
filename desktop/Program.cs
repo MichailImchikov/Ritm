@@ -17,7 +17,10 @@ namespace Ritm {
     data.Save(new TaskItem{title="Записаться на тренировку",category="Личное",status="todo",priority=3},0);
     data.Save(new TaskItem{title="Собрать идеи для проекта",category="Ритм",status="todo",priority=2,subtasks={new Step{id="a",title="Определить цель",done=true},new Step{id="b",title="Записать мысли"}}},0);
     data.Save(new TaskItem{title="Подвести итоги месяца",category="Личное",status="done",completed=true,date=UI.Date(DateTime.Today),priority=4},0);
-    var preview=new MainWindow(data);Window target=preview;
+    if(args[0].StartsWith("--render-team")){var server=Path.Combine(temp+"-server","Отдел продаж");Directory.CreateDirectory(server);data.ConnectTeam(server,"Отдел продаж","Анна");
+     data.Save(new TaskItem{title="Подготовить КП для клиента",category="Отдел продаж",status="doing",priority=1,date=UI.Date(DateTime.Today),assignee="Анна"},0);data.Save(new TaskItem{title="Обзвонить новых лидов",category="Отдел продаж",status="todo",priority=2,assignee="Иван Петров"},0);
+     data.Save(new TaskItem{title="Обновить прайс-лист",category="Отдел продаж",status="todo",priority=3},0);data.Save(new TaskItem{title="Отчёт за октябрь",category="Отдел продаж",status="done",completed=true,assignee="Мария"},0);}
+    var preview=new MainWindow(data);Window target=preview;if(args[0].StartsWith("--render-team"))preview.PreviewTaskLayout("board","Отдел продаж");if(args[0].StartsWith("--render-team-editor"))target=new TaskEditor(null,data.Tasks.Find(t=>t.category=="Отдел продаж"),data.ProjectNames,t=>true,t=>{},n=>data.IsTeamName(n)?data.Members(n):null);
     if(args[0]=="--render-calendar")preview.PreviewView("calendar");if(args[0]=="--render-day")preview.PreviewView("today");
     if(args[0]=="--render-project-list"){preview.PreviewView("calendar");preview.PreviewTaskLayout("list","Ритм");}if(args[0]=="--render-day-board"){preview.PreviewView("today");preview.PreviewTaskLayout("board");}if(args[0]=="--render-settings")target=new SettingsWindow(null,data,new GoogleDriveClient(temp),()=>{},()=>{});
     if(args[0]=="--render-editor")target=new TaskEditor(null,data.Tasks[0],data.ProjectNames,t=>true,t=>{});

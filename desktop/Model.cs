@@ -13,6 +13,7 @@ namespace Ritm {
   public int version {get;set;} public long createdAt {get;set;} public string updatedUtc {get;set;}
   public string deviceId {get;set;} public bool deleted {get;set;}
   public string status {get;set;} public string recordType {get;set;}
+  public string assignee {get;set;} public string createdBy {get;set;}
   public TaskItem() { id=Guid.NewGuid().ToString();title="";description="";category="Жизнь";priority=3;subtasks=new List<Step>(); }
   public TaskItem Clone() {return Json.Read<TaskItem>(Json.Write(this));}
   public void Validate() {
@@ -31,10 +32,13 @@ namespace Ritm {
    if(subtasks==null)subtasks=new List<Step>();
    if(subtasks.Count>50||subtasks.Any(s=>s==null||string.IsNullOrWhiteSpace(s.title)||s.title.Length>200))throw new Exception("В задаче может быть до 50 подзадач с названиями до 200 символов.");
    foreach(var s in subtasks)if(string.IsNullOrEmpty(s.id))s.id=Guid.NewGuid().ToString();
+   assignee=Person(assignee,"Имя исполнителя");createdBy=Person(createdBy,"Имя автора");
    title=title.Trim();category=category.Trim();
   }
+  // Имя участника общего проекта: пробелы схлопываются, пустое значение — «не указано».
+  public static string Person(string name,string label="Имя"){name=string.Join(" ",(name??"").Split(new[]{' ','\t','\r','\n'},StringSplitOptions.RemoveEmptyEntries));if(name.Length==0)return null;if(name.Length>50)throw new Exception(label+": до 50 символов.");return name;}
  }
- public class Preferences {public string SyncDirectory {get;set;} public string DeviceId {get;set;} public string Theme {get;set;} public string Palette {get;set;} public FocusState Focus {get;set;} public string FocusTaskId {get;set;} public Dictionary<string,string> TaskLayouts {get;set;} public bool ReduceMotion {get;set;} }
+ public class Preferences {public string SyncDirectory {get;set;} public string DeviceId {get;set;} public string Theme {get;set;} public string Palette {get;set;} public FocusState Focus {get;set;} public string FocusTaskId {get;set;} public Dictionary<string,string> TaskLayouts {get;set;} public bool ReduceMotion {get;set;} public List<TeamLink> Teams {get;set;} public string UserName {get;set;} public int TaskSort {get;set;} }
  public class BackupDocument {public string app {get;set;} public int version {get;set;} public List<TaskItem> tasks {get;set;} public List<TaskItem> projects {get;set;} }
  public static class Json {
   public static string Write(object value){return new JavaScriptSerializer {MaxJsonLength=10000000}.Serialize(value);}

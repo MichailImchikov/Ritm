@@ -7,7 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 
 namespace Ritm {
- public sealed class Store {
+ public sealed partial class Store {
   public readonly string Root;
   public Preferences Settings;
   public string Status="Сохранено на компьютере";
@@ -30,9 +30,10 @@ namespace Ritm {
   public string GetTaskLayout(string context,string fallback="board"){string layout;return Settings.TaskLayouts!=null&&Settings.TaskLayouts.TryGetValue(context,out layout)&&(layout=="board"||layout=="list")?layout:fallback;}
   public void SetTaskLayout(string context,string layout){if(layout!="board"&&layout!="list")throw new Exception("Неизвестный вид задач.");if(Settings.TaskLayouts==null)Settings.TaskLayouts=new Dictionary<string,string>();Settings.TaskLayouts[context]=layout;SavePreferences();}
   public void CreateProject(string name){name=(name??"").Trim();if(name=="Без проекта"||name.Length==0||name.Length>50)throw new Exception("Название проекта: от 1 до 50 символов.");if(ProjectNames.Any(n=>n.Equals(name,StringComparison.OrdinalIgnoreCase)))throw new Exception("Проект с таким названием уже есть.");Save(new TaskItem{title=name,category=name,recordType="project"},0);}
-  public void RenameProject(string oldName,string newName){newName=(newName??"").Trim();if(oldName==newName)return;if(newName.Length==0||newName.Length>50||newName=="Без проекта"||ProjectNames.Any(n=>n.Equals(newName,StringComparison.OrdinalIgnoreCase)))throw new Exception("Выберите другое название проекта (до 50 символов).");foreach(var t in AllRecords.Where(t=>!t.deleted&&t.category==oldName)){t.category=newName;if(t.recordType=="project")t.title=newName;Save(t,t.version);}if(Settings.TaskLayouts!=null&&Settings.TaskLayouts.ContainsKey("project:"+oldName)){Settings.TaskLayouts["project:"+newName]=Settings.TaskLayouts["project:"+oldName];Settings.TaskLayouts.Remove("project:"+oldName);SavePreferences();}}
-  public void DeleteProject(string name){foreach(var t in AllRecords.Where(t=>!t.deleted&&t.category==name)){if(t.recordType=="project")Delete(t);else{t.category="Без проекта";Save(t,t.version);}}}
-  public bool MergeRecords(IEnumerable<TaskItem> incoming){bool changed=false;foreach(var t in incoming){t.Validate();DateTimeOffset stamp;if(t.version<1||string.IsNullOrEmpty(t.deviceId)||!DateTimeOffset.TryParse(t.updatedUtc,CultureInfo.InvariantCulture,DateTimeStyles.RoundtripKind,out stamp))throw new Exception("Некорректная облачная запись.");TaskItem old;if(!items.TryGetValue(t.id,out old)||Compare(t,old)>0){if(old!=null)Archive(old,"history");Atomic(Path.Combine(Local,t.id+".json"),Json.Write(t));items[t.id]=t.Clone();changed=true;}else if(Json.Write(old)!=Json.Write(t))Archive(t,"history");}return changed;}
+  public void RenameProject(string oldName,string newName){newName=(newName??"").Trim();if(oldName==newName)return;if(IsTeamName(oldName))throw new Exception("Общий проект нельзя переименовать: его название видят все участники.");if(newName.Length==0||newName.Length>50||newName=="Без проекта"||ProjectNames.Any(n=>n.Equals(newName,StringComparison.OrdinalIgnoreCase)))throw new Exception("Выберите другое название проекта (до 50 символов).");foreach(var t in AllRecords.Where(t=>!t.deleted&&t.category==oldName)){t.category=newName;if(t.recordType=="project")t.title=newName;Save(t,t.version);}if(Settings.TaskLayouts!=null&&Settings.TaskLayouts.ContainsKey("project:"+oldName)){Settings.TaskLayouts["project:"+newName]=Settings.TaskLayouts["project:"+oldName];Settings.TaskLayouts.Remove("project:"+oldName);SavePreferences();}}
+  public void DeleteProject(string name){if(IsTeamName(name))throw new Exception("Общий проект можно только отключить на этом компьютере.");foreach(var t in AllRecords.Where(t=>!t.deleted&&t.category==name)){if(t.recordType=="project")Delete(t);else{t.category="Без проекта";Save(t,t.version);}}}
+  public List<TaskItem> PersonalRecords {get{return items.Values.Where(t=>!IsTeamName(t.category)).Select(t=>t.Clone()).ToList();}}
+  public bool MergeRecords(IEnumerable<TaskItem> incoming){bool changed=false;foreach(var t in incoming){t.Validate();if(IsTeamName(t.category))continue;DateTimeOffset stamp;if(t.version<1||string.IsNullOrEmpty(t.deviceId)||!DateTimeOffset.TryParse(t.updatedUtc,CultureInfo.InvariantCulture,DateTimeStyles.RoundtripKind,out stamp))throw new Exception("Некорректная облачная запись.");TaskItem old;if(!items.TryGetValue(t.id,out old)||Compare(t,old)>0){if(old!=null)Archive(old,"history");Atomic(Path.Combine(Local,t.id+".json"),Json.Write(t));items[t.id]=t.Clone();changed=true;}else if(Json.Write(old)!=Json.Write(t))Archive(t,"history");}return changed;}
   void SavePreferences(){Atomic(Path.Combine(Root,"settings.json"),Json.Write(Settings));}
   public void SetSync(string path){
    if(!string.IsNullOrWhiteSpace(path)){
@@ -48,8 +49,9 @@ namespace Ritm {
    LoadLocal();Sync();value.Validate();TaskItem current;
    if(items.TryGetValue(value.id,out current)){
     if(current.version!=expectedVersion||current.deleted||current.updatedUtc!=value.updatedUtc||current.deviceId!=value.deviceId)throw new Exception("Задача изменилась на другом устройстве. Ваш текст остался в форме. Скопируйте его и откройте свежую версию задачи.");
+    if(current.category!=value.category&&IsTeamName(current.category))throw new Exception("Задачу общего проекта нельзя перенести в другой проект — её видят остальные участники. Создайте копию.");
    }else if(expectedVersion!=0)throw new Exception("Исходная задача не найдена.");
-   var saved=value.Clone();saved.version=expectedVersion+1;saved.updatedUtc=DateTime.UtcNow.ToString("o",CultureInfo.InvariantCulture);saved.deviceId=Settings.DeviceId;
+   var saved=value.Clone();if(current==null&&saved.createdBy==null&&saved.recordType=="task")saved.createdBy=Me(saved.category);saved.version=expectedVersion+1;saved.updatedUtc=DateTime.UtcNow.ToString("o",CultureInfo.InvariantCulture);saved.deviceId=Settings.DeviceId;
    if(saved.createdAt==0)saved.createdAt=(long)(DateTime.UtcNow-new DateTime(1970,1,1)).TotalMilliseconds;
    var path=Path.Combine(Local,saved.id+".json");if(current!=null)Archive(current,"history");Atomic(path,Json.Write(saved));items[saved.id]=saved;Sync();return saved.Clone();
   }
@@ -72,7 +74,8 @@ namespace Ritm {
    using(var sha=SHA256.Create())hash=BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(raw))).Replace("-","").Substring(0,16);
    string dir=Path.Combine(Root,kind);Directory.CreateDirectory(dir);string path=Path.Combine(dir,t.id+"-"+hash+".json");if(!File.Exists(path))Atomic(path,raw);
   }
-  public bool Sync(){
+  public bool Sync(){bool teams=SyncTeams();return SyncShared()|teams;}
+  bool SyncShared(){
    SyncError=false;
    if(string.IsNullOrEmpty(Settings.SyncDirectory)){Status="Сохранено на компьютере";return false;}
    bool changed=false;
@@ -82,18 +85,21 @@ namespace Ritm {
     foreach(var file in Directory.GetFiles(shared,"*.json")){
      TaskItem incoming;
      try{incoming=ReadRecord(file);}catch(Exception){SyncError=true;continue;}
-     TaskItem local;
-     if(!items.TryGetValue(incoming.id,out local)){Atomic(Path.Combine(Local,incoming.id+".json"),Json.Write(incoming));items[incoming.id]=incoming;changed=true;}
-     else if(Json.Write(incoming)!=Json.Write(local)){
-      // Keep both versions before deterministic resolution, including deletion conflicts.
-      Archive(local,"history");Archive(incoming,"history");
-      if(Compare(incoming,local)>0){Atomic(Path.Combine(Local,incoming.id+".json"),Json.Write(incoming));items[incoming.id]=incoming;changed=true;}
-     }
+     if(!IsTeamName(incoming.category)&&Absorb(incoming))changed=true;
     }
-    foreach(var t in items.Values){var path=Path.Combine(shared,t.id+".json");if(!File.Exists(path)){Atomic(path,Json.Write(t));continue;}TaskItem remote;try{remote=ReadRecord(path);}catch{SyncError=true;continue;}if(Compare(t,remote)>0)Atomic(path,Json.Write(t));}
+    foreach(var t in items.Values){if(IsTeamName(t.category))continue;var path=Path.Combine(shared,t.id+".json");if(!File.Exists(path)){Atomic(path,Json.Write(t));continue;}TaskItem remote;try{remote=ReadRecord(path);}catch{SyncError=true;continue;}if(Compare(t,remote)>0)Atomic(path,Json.Write(t));}
     Status=SyncError?"Есть нечитаемые файлы в общей папке. Локальные задачи сохранены.":"Общая папка обновлена · "+DateTime.Now.ToString("HH:mm");
    }catch(Exception e){SyncError=true;Status="Локально сохранено. Синхронизация: "+e.Message;}
    return changed;
+  }
+  bool Absorb(TaskItem incoming){
+   TaskItem local;
+   if(!items.TryGetValue(incoming.id,out local)){Atomic(Path.Combine(Local,incoming.id+".json"),Json.Write(incoming));items[incoming.id]=incoming;return true;}
+   if(Json.Write(incoming)==Json.Write(local))return false;
+   // Keep both versions before deterministic resolution, including deletion conflicts.
+   Archive(local,"history");Archive(incoming,"history");
+   if(Compare(incoming,local)<=0)return false;
+   Atomic(Path.Combine(Local,incoming.id+".json"),Json.Write(incoming));items[incoming.id]=incoming;return true;
   }
   public void Export(string path){Atomic(path,Json.Write(new BackupDocument {app="ritm-desktop",version=2,tasks=Tasks,projects=AllRecords.Where(t=>!t.deleted&&t.recordType=="project").ToList()}));}
   public List<TaskItem> ReadImport(string path){
