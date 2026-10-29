@@ -1,0 +1,70 @@
+name: Release desktop app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/release-desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-desktop
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        id: build
+        run: |
+          $ErrorActionPreference='Stop'
+          $exe=(& ./desktop/build.ps1 | Select-Object -Last 1)
+          $version=(Get-Item -LiteralPath $exe).VersionInfo.FileVersion
+          "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Self-test
+        run: |
+          $root=Join-Path $env:RUNNER_TEMP 'ritm-self-test'
+          $process=Start-Process -FilePath '${{ steps.build.outputs.exe }}' -ArgumentList '--self-test',"`"$root`"" -Wait -PassThru
+          Get-Content -LiteralPath (Join-Path $root 'result.txt') -Encoding utf8 -ErrorAction SilentlyContinue
+          if($process.ExitCode -ne 0){throw "Self-test failed with exit code $($process.ExitCode)"}
+
+      - name: Package
+        id: package
+        run: |
+          $ErrorActionPreference='Stop'
+          $version='${{ steps.build.outputs.version }}'
+          $tag="v$version"
+          gh release view $tag *> $null
+          if($LASTEXITCODE -eq 0){$tag="v$version-build.${{ github.run_number }}"}
+          $global:LASTEXITCODE=0
+          $outputDirectory=Split-Path -Parent '${{ steps.build.outputs.exe }}'
+          $zip=Join-Path $env:RUNNER_TEMP "Ritm-$tag.zip"
+          Compress-Archive -Path (Join-Path $outputDirectory 'Ritm.exe'),(Join-Path $outputDirectory 'Ritm.exe.config') -DestinationPath $zip -Force
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "zip=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Publish release
+        run: |
+          $notes=@"
+          Сборка из коммита ${{ github.sha }}.
+
+          Скачайте архив, распакуйте в любую папку и запустите Ritm.exe. Нужен .NET Framework 4.x (есть в Windows 10/11).
+          "@
+          gh release create '${{ steps.package.outputs.tag }}' '${{ steps.package.outputs.zip }}' --target '${{ github.sha }}' --title 'Ритм ${{ steps.package.outputs.tag }}' --notes $notes --latest
+          if($LASTEXITCODE -ne 0){throw 'gh release create failed'}
+        env:
+          GH_TOKEN: ${{ github.token }}
