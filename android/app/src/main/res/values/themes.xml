@@ -1,0 +1,8 @@
+<resources>
+    <color name="ritm_canvas">#F4F6FB</color>
+    <style name="Theme.Ritm" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/ritm_canvas</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

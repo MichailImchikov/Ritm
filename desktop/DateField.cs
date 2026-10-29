@@ -1,0 +1,13 @@
+using System;
+using System.Globalization;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+namespace Ritm {
+ public sealed class DateField:DockPanel {
+  readonly TextBox input;readonly Popup popup=new Popup{StaysOpen=false,AllowsTransparency=true,Placement=PlacementMode.Bottom};DateTime month;
+  public DateTime? SelectedDate {get{if(string.IsNullOrWhiteSpace(input.Text))return null;DateTime value;if(!DateTime.TryParseExact(input.Text.Trim(),new[]{"dd.MM.yyyy","d.M.yyyy","yyyy-MM-dd"},CultureInfo.InvariantCulture,DateTimeStyles.None,out value)||value.Year<1900)throw new Exception("Введите дату в формате дд.мм.гггг или оставьте поле пустым.");return value;}set{input.Text=value.HasValue?value.Value.ToString("dd.MM.yyyy"):"";}}
+  public DateField(string value){MinHeight=34;var choose=UI.Button("",()=>{try{month=SelectedDate??DateTime.Today;}catch{month=DateTime.Today;}Draw();popup.IsOpen=true;});choose.Content=UI.Icon("",13);choose.Margin=new Thickness(5,0,0,0);choose.Padding=new Thickness(9,6,9,6);choose.ToolTip="Выбрать дату";DockPanel.SetDock(choose,Dock.Right);Children.Add(choose);input=UI.Input("",10,34);System.Windows.Automation.AutomationProperties.SetName(input,"Дата задачи, дд.мм.гггг");Children.Add(input);popup.PlacementTarget=this;SelectedDate=string.IsNullOrEmpty(value)?(DateTime?)null:DateTime.ParseExact(value,"yyyy-MM-dd",CultureInfo.InvariantCulture);}
+  void Draw(){var p=new StackPanel{Width=280};var header=new DockPanel();var next=UI.Button("›",()=>{if(month.Year<9999||month.Month<12){month=month.AddMonths(1);Draw();}});DockPanel.SetDock(next,Dock.Right);header.Children.Add(next);var prev=UI.Button("‹",()=>{if(month.Year>1900||month.Month>1){month=month.AddMonths(-1);Draw();}});DockPanel.SetDock(prev,Dock.Left);header.Children.Add(prev);header.Children.Add(UI.Text(month.ToString("MMMM yyyy",new CultureInfo("ru-RU")),12,null,true));p.Children.Add(header);UI.Gap(p,10);var days=new UniformGrid{Columns=7};foreach(var d in new[]{"Пн","Вт","Ср","Чт","Пт","Сб","Вс"}){var text=UI.Text(d,10,UI.Muted);text.HorizontalAlignment=HorizontalAlignment.Center;days.Children.Add(text);}DateTime first=new DateTime(month.Year,month.Month,1);int offset=((int)first.DayOfWeek+6)%7;for(int i=0;i<offset;i++)days.Children.Add(new Border());for(int i=1;i<=DateTime.DaysInMonth(month.Year,month.Month);i++){var day=new DateTime(month.Year,month.Month,i);var b=UI.Button(i.ToString(),()=>{SelectedDate=day;popup.IsOpen=false;});b.Padding=new Thickness(3,8,3,8);b.Margin=new Thickness(1);b.BorderThickness=new Thickness(0);days.Children.Add(b);}p.Children.Add(days);popup.Child=UI.Card(p,null,new Thickness(12));}
+ }
+}

@@ -1,0 +1,41 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+
+namespace Ritm {
+ public sealed class TaskEditor:Window {
+  readonly TaskItem task;readonly Func<TaskItem,bool> save;readonly Action<TaskItem> remove;
+  TextBox title,description,newStep;ComboBox category,priority,statusChoice;DateField date;CheckBox completed;
+  readonly StackPanel steps=new StackPanel();
+  public TaskEditor(Window owner,TaskItem value,IEnumerable<string> categories,Func<TaskItem,bool> onSave,Action<TaskItem> onDelete){
+   if(owner!=null)Owner=owner;Title=value.version==0?"Ритм — новая задача":"Ритм — задача";Width=570;Height=750;MinHeight=550;MinWidth=480;WindowStartupLocation=WindowStartupLocation.CenterOwner;Background=UI.B("#FAFBF7");task=value.Clone();save=onSave;remove=onDelete;if(owner!=null)Icon=owner.Icon;
+   var root=new DockPanel{LastChildFill=true,Background=UI.Canvas};Content=root;
+   var header=new StackPanel{Margin=new Thickness(27,20,27,16)};header.Children.Add(UI.Text(value.version==0?"Новая задача":"Задача",25,null,true));DockPanel.SetDock(header,Dock.Top);root.Children.Add(header);
+   var footer=new DockPanel{Margin=new Thickness(26,15,26,18)};var buttons=new StackPanel{Orientation=Orientation.Horizontal,HorizontalAlignment=HorizontalAlignment.Right};buttons.Children.Add(UI.Button("Отмена",()=>Close()));var saveButton=UI.Button("Сохранить",Save,true);buttons.Children.Add(saveButton);DockPanel.SetDock(buttons,Dock.Right);footer.Children.Add(buttons);if(task.version>0){var deleteButton=UI.Button("Удалить",Delete);deleteButton.HorizontalAlignment=HorizontalAlignment.Left;deleteButton.Background=Brushes.Transparent;deleteButton.BorderThickness=new Thickness(0);deleteButton.Foreground=UI.Muted;footer.Children.Add(deleteButton);}else footer.Children.Add(UI.Text("Сохраним на компьютере",10,UI.Muted));DockPanel.SetDock(footer,Dock.Bottom);root.Children.Add(footer);
+   var panel=new StackPanel{Margin=new Thickness(27,0,27,12)};var scroll=new ScrollViewer{VerticalScrollBarVisibility=ScrollBarVisibility.Auto,Content=panel};root.Children.Add(scroll);
+   UI.Label(panel,"Название");title=UI.Input(task.title);System.Windows.Automation.AutomationProperties.SetName(title,"Название задачи");panel.Children.Add(title);
+   UI.Label(panel,"Описание");description=UI.Input(task.description,10000,95);description.AcceptsReturn=true;description.TextWrapping=TextWrapping.Wrap;description.VerticalScrollBarVisibility=ScrollBarVisibility.Auto;description.VerticalContentAlignment=VerticalAlignment.Top;System.Windows.Automation.AutomationProperties.SetName(description,"Описание задачи");panel.Children.Add(description);
+   var dates=new Grid();dates.ColumnDefinitions.Add(new ColumnDefinition());dates.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(18)});dates.ColumnDefinitions.Add(new ColumnDefinition());var left=new StackPanel();var right=new StackPanel();Grid.SetColumn(right,2);dates.Children.Add(left);dates.Children.Add(right);panel.Children.Add(dates);
+   UI.Label(left,"Дата");date=new DateField(task.date);System.Windows.Automation.AutomationProperties.SetName(date,"Дата задачи");left.Children.Add(date);var clear=UI.Button("Оставить без даты",()=>date.SelectedDate=null);clear.FontSize=10;clear.Padding=new Thickness(2,4,2,4);clear.BorderThickness=new Thickness(0);clear.Background=Brushes.Transparent;clear.Foreground=UI.Accent;clear.HorizontalAlignment=HorizontalAlignment.Left;left.Children.Add(clear);
+   UI.Label(right,"Приоритет");priority=new ComboBox{ItemsSource=new[]{"Срочный","Высокий","Обычный","Низкий"},SelectedIndex=task.priority-1,MinHeight=34,Padding=new Thickness(6)};System.Windows.Automation.AutomationProperties.SetName(priority,"Приоритет");right.Children.Add(priority);
+   UI.Label(panel,"Проект");category=new ComboBox{IsEditable=true,ItemsSource=categories.Distinct().ToList(),Text=task.category,MinHeight=34,Padding=new Thickness(6)};System.Windows.Automation.AutomationProperties.SetName(category,"Проект");panel.Children.Add(category);var hint=UI.Text("Можно написать свою проект",10,UI.Muted);hint.Margin=new Thickness(0,6,0,0);panel.Children.Add(hint);
+   UI.Label(panel,"Статус");statusChoice=new ComboBox{ItemsSource=new[]{"К выполнению","В работе","Готово"},SelectedIndex=task.completed?2:task.status=="doing"?1:0,MinHeight=34};System.Windows.Automation.AutomationProperties.SetName(statusChoice,"Статус задачи");panel.Children.Add(statusChoice);UI.Label(panel,"Подзадачи");panel.Children.Add(steps);RenderSteps();var add=new DockPanel{Margin=new Thickness(0,7,0,0)};var addButton=UI.Button("+ Добавить",AddStep);DockPanel.SetDock(addButton,Dock.Right);add.Children.Add(addButton);newStep=UI.Input("");newStep.MaxLength=200;System.Windows.Automation.AutomationProperties.SetName(newStep,"Новая подзадача");newStep.KeyDown+=(s,e)=>{if(e.Key==System.Windows.Input.Key.Enter){AddStep();e.Handled=true;}};add.Children.Add(newStep);panel.Children.Add(add);
+   completed=new CheckBox{Content="Задача выполнена",IsChecked=task.completed,Margin=new Thickness(0,22,0,8),Foreground=UI.Muted};completed.Visibility=Visibility.Collapsed;panel.Children.Add(completed);statusChoice.SelectionChanged+=delegate{completed.IsChecked=statusChoice.SelectedIndex==2;};completed.Checked+=delegate{statusChoice.SelectedIndex=2;};completed.Unchecked+=delegate{if(statusChoice.SelectedIndex==2)statusChoice.SelectedIndex=0;};
+   Loaded+=delegate{title.Focus();title.CaretIndex=title.Text.Length;};PreviewKeyDown+=(s,e)=>{if(e.Key==System.Windows.Input.Key.Escape)Close();if(e.Key==System.Windows.Input.Key.S&&(System.Windows.Input.Keyboard.Modifiers&System.Windows.Input.ModifierKeys.Control)!=0){Save();e.Handled=true;}};
+  }
+  void RenderSteps(){steps.Children.Clear();foreach(var step in task.subtasks){var current=step;var row=new DockPanel{Margin=new Thickness(0,4,0,4)};var check=new CheckBox{IsChecked=current.done,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,8,0)};System.Windows.Automation.AutomationProperties.SetName(check,"Подзадача выполнена");check.Checked+=delegate{current.done=true;};check.Unchecked+=delegate{current.done=false;};DockPanel.SetDock(check,Dock.Left);row.Children.Add(check);var delete=UI.Button("×",()=>{task.subtasks.Remove(current);RenderSteps();});delete.Padding=new Thickness(8,4,8,4);DockPanel.SetDock(delete,Dock.Right);row.Children.Add(delete);var text=UI.Input(current.title);System.Windows.Automation.AutomationProperties.SetName(text,"Название подзадачи");text.TextChanged+=delegate{current.title=text.Text;};row.Children.Add(text);steps.Children.Add(row);}}
+  void AddStep(){if(string.IsNullOrWhiteSpace(newStep.Text))return;if(task.subtasks.Count>=50){MessageBox.Show(this,"Максимум — 50 подзадач.","Ритм");return;}task.subtasks.Add(new Step{id=Guid.NewGuid().ToString(),title=newStep.Text.Trim()});newStep.Clear();RenderSteps();newStep.Focus();}
+  void Save(){
+   try{if(!string.IsNullOrWhiteSpace(newStep.Text)){if(task.subtasks.Count>=50)throw new Exception("Максимум — 50 подзадач.");AddStep();}task.title=title.Text;task.description=description.Text;task.category=category.Text;task.priority=priority.SelectedIndex+1;task.date=date.SelectedDate.HasValue?UI.Date(date.SelectedDate.Value):null;task.completed=completed.IsChecked==true;task.status=new[]{"todo","doing","done"}[statusChoice.SelectedIndex];task.Validate();if(save(task))DialogResult=true;}
+   catch(Exception e){MessageBox.Show(this,e.Message,"Не удалось сохранить",MessageBoxButton.OK,MessageBoxImage.Information);}
+  }
+  void Delete(){if(MessageBox.Show(this,"Удалить задачу? Предыдущая версия сохранится в локальной истории.","Ритм",MessageBoxButton.YesNo,MessageBoxImage.Question)!=MessageBoxResult.Yes)return;try{remove(task);DialogResult=true;}catch(Exception e){MessageBox.Show(this,e.Message,"Не удалось удалить");}}
+ }
+}
+
+
+
+

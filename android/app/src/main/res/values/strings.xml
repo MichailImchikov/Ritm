@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Ритм</string>
+    <string name="widget_name">Ритм · Мой день</string>
+    <string name="widget_description">Задачи на сегодня с отметкой выполнения</string>
+    <string name="shortcut_new">Новая задача</string>
+    <string name="shortcut_focus">Фокус</string>
+</resources>

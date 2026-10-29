@@ -1,0 +1,27 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
+
+namespace Ritm {
+ public sealed class SettingsWindow:Window {
+  readonly Store store;readonly TextBlock path,status;
+  public SettingsWindow(Window owner,Store data){
+   Owner=owner;store=data;Title="Ритм — данные и синхронизация";Width=610;Height=700;MinWidth=500;MinHeight=500;WindowStartupLocation=WindowStartupLocation.CenterOwner;Icon=owner.Icon;Background=UI.B("#FAFBF7");
+   var content=new StackPanel{Margin=new Thickness(28)};Content=new ScrollViewer{Content=content,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};content.Children.Add(UI.Text("Настройки и данные",25,null,true));UI.Gap(content,18);
+   content.Children.Add(UI.Text("Работает без интернета",16,null,true));UI.Gap(content,8);content.Children.Add(UI.Text("Задачи хранятся на этом компьютере и сохраняются сразу после изменения. Вход в аккаунт для работы не нужен.",12,UI.Muted));
+   UI.Label(content,"Синхронизация через общую папку");content.Children.Add(UI.Text("Выберите папку Google Диска, OneDrive, Dropbox или сетевую папку. На другом компьютере выберите ту же общую папку в Ритме. Передачу файлов между компьютерами выполняет установленный клиент диска.",12,UI.Muted));UI.Gap(content,12);
+   path=UI.Text("",12);content.Children.Add(UI.Card(path,UI.B("#F0F3EA"),new Thickness(12)));UI.Gap(content,10);var syncButtons=new WrapPanel();syncButtons.Children.Add(UI.Button("Выбрать общую папку",Choose));syncButtons.Children.Add(UI.Button("Отключить",()=>{try{store.SetSync(null);Update();}catch(Exception e){Error(e);}}));content.Children.Add(syncButtons);UI.Gap(content,9);status=UI.Text("",11,UI.Muted);content.Children.Add(status);UI.Gap(content,8);content.Children.Add(UI.Text("Обновление — каждые 5 секунд, пока приложение открыто. На обоих устройствах папка должна быть доступна локально. Ритм не подключается к Google Диску самостоятельно.",11,UI.Muted));
+   UI.Label(content,"Резервная копия");content.Children.Add(UI.Text("Экспорт совместим с ранее созданной веб-версией. Импорт добавляет новые задачи. Повторный импорт создаёт копии.",11,UI.Muted));UI.Gap(content,9);var backups=new WrapPanel();backups.Children.Add(UI.Button("Экспорт JSON",Export));backups.Children.Add(UI.Button("Импорт JSON",Import));content.Children.Add(backups);
+   UI.Label(content,"Локальные данные и история");content.Children.Add(UI.Text(store.Root,11,UI.Muted));UI.Gap(content,8);var files=new WrapPanel();files.Children.Add(UI.Button("Открыть папку данных",()=>Process.Start(new ProcessStartInfo("explorer.exe",store.Root){UseShellExecute=true})));files.Children.Add(UI.Button("Открыть историю",()=>Process.Start(new ProcessStartInfo("explorer.exe",Path.Combine(store.Root,"history")){UseShellExecute=true})));content.Children.Add(files);
+   UI.Gap(content,16);content.Children.Add(UI.Text("Синхронизация не связана с облачной базой веб-версии. Для переноса из неё используйте экспорт и импорт JSON. История хранит предыдущие версии файлов, включая удалённые задачи.",10,UI.Muted));UI.Gap(content,20);content.Children.Add(UI.Button("Готово",()=>Close(),true));Update();
+  }
+  void Update(){path.Text=string.IsNullOrEmpty(store.Settings.SyncDirectory)?"Общая папка не выбрана":store.Settings.SyncDirectory;status.Text=store.Status;}
+  void Choose(){using(var dialog=new System.Windows.Forms.FolderBrowserDialog{Description="Выберите общую синхронизируемую папку для Ритма",SelectedPath=store.Settings.SyncDirectory??""}){if(dialog.ShowDialog()!=System.Windows.Forms.DialogResult.OK)return;try{store.SetSync(dialog.SelectedPath);Update();}catch(Exception e){Error(e);}}}
+  void Export(){var dialog=new Microsoft.Win32.SaveFileDialog{Title="Экспорт задач",Filter="Резервная копия JSON|*.json",FileName="ritm-"+UI.Date(DateTime.Today)+".json"};if(dialog.ShowDialog(this)!=true)return;try{store.Export(dialog.FileName);MessageBox.Show(this,"Резервная копия сохранена.","Ритм");}catch(Exception e){Error(e);}}
+  void Import(){var dialog=new Microsoft.Win32.OpenFileDialog{Title="Импорт задач",Filter="Резервная копия JSON|*.json"};if(dialog.ShowDialog(this)!=true)return;try{var list=store.ReadImport(dialog.FileName);if(MessageBox.Show(this,"Добавить задач: "+list.Count+"? Будут созданы новые записи.","Импорт",MessageBoxButton.YesNo)!=MessageBoxResult.Yes)return;store.Import(list);Update();MessageBox.Show(this,"Задачи импортированы.","Ритм");}catch(Exception e){Error(e);}}
+  void Error(Exception e){MessageBox.Show(this,e.Message,"Ритм",MessageBoxButton.OK,MessageBoxImage.Information);}
+ }
+}

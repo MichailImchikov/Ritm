@@ -43,3 +43,9 @@ yarn-error.log*
 
 # OS metadata
 .DS_Store
+
+# Desktop app: temporary test/preview data and screenshot error logs
+/desktop/preview-data-*/
+/desktop/qa-*/
+/desktop/test-*/
+*.png.error.txt

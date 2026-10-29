@@ -1,0 +1,26 @@
+using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Markup;
+using System.Windows.Media;
+
+namespace Ritm {
+ public static class UI {
+  public static Brush B(string hex){return new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));}
+  public static readonly Brush Ink=B("#2D3933"),Muted=B("#849079"),Accent=B("#CB704A"),Line=B("#E5E8DF");
+  public static TextBlock Text(string value,double size=13,Brush brush=null,bool bold=false){return new TextBlock{Text=value,FontSize=size,Foreground=brush??Ink,FontWeight=bold?FontWeights.SemiBold:FontWeights.Normal,TextWrapping=TextWrapping.Wrap,VerticalAlignment=VerticalAlignment.Center};}
+  public static Button Button(string label,Action action,bool primary=false){var b=new Button{Content=label,Padding=new Thickness(13,9,13,9),FontSize=12,Margin=new Thickness(0,0,6,0),Background=primary?Accent:Brushes.White,Foreground=primary?Brushes.White:Ink,BorderBrush=primary?Accent:Line,BorderThickness=new Thickness(1),Cursor=System.Windows.Input.Cursors.Hand};b.Click+=delegate{action();};return b;}
+  public static Border Card(UIElement content,Brush background=null,Thickness? padding=null){return new Border{Background=background??Brushes.White,BorderBrush=Line,BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(10),Padding=padding??new Thickness(18),Child=content};}
+  public static void Gap(Panel p,double height=12){p.Children.Add(new Border{Height=height});}
+  public static void Label(Panel p,string title){var t=Text(title,11,Muted,true);t.Margin=new Thickness(0,14,0,6);p.Children.Add(t);}
+  public static TextBox Input(string value,int max=200,int height=36){return new TextBox{Text=value??"",MaxLength=max,MinHeight=height,Padding=new Thickness(10,7,10,7),BorderBrush=Line,BorderThickness=new Thickness(1),FontSize=13,Background=Brushes.White,Foreground=Ink,VerticalContentAlignment=VerticalAlignment.Center};}
+  public static string Date(DateTime d){return d.ToString("yyyy-MM-dd",System.Globalization.CultureInfo.InvariantCulture);}
+  public static string DisplayDate(string d){return string.IsNullOrEmpty(d)?"Без даты":DateTime.ParseExact(d,"yyyy-MM-dd",System.Globalization.CultureInfo.InvariantCulture).ToString("d MMMM",new System.Globalization.CultureInfo("ru-RU"));}
+  public static string Priority(int p){return new[]{"","Срочный","Высокий","Обычный","Низкий"}[p];}
+  public static string ColorFor(string category){if(category=="Работа")return "#6683A4";if(category=="Жизнь")return "#BD8B60";if(category=="Здоровье")return "#729781";return "#9B80AD";}
+  public static void InstallStyles(){
+   Application.Current.Resources.Add(typeof(Window),new Style(typeof(Window)){Setters={new Setter(Control.FontFamilyProperty,new FontFamily("Segoe UI")),new Setter(Control.FontSizeProperty,13.0),new Setter(Control.ForegroundProperty,Ink)}});
+   var style=(Style)XamlReader.Parse(@"<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='Button'><Border x:Name='surface' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' CornerRadius='6' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='Center'/></Border><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='surface' Property='Opacity' Value='0.8'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter TargetName='surface' Property='Opacity' Value='0.4'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>");Application.Current.Resources.Add(typeof(Button),style);
+  }
+ }
+}

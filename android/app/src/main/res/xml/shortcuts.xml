@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="new_task" android:enabled="true" android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/shortcut_new">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="ru.ritm.planner"
+            android:targetClass="ru.ritm.planner.MainActivity" android:data="ritm://shortcut/quick" />
+    </shortcut>
+    <shortcut android:shortcutId="focus" android:enabled="true" android:icon="@drawable/ic_shortcut_focus"
+        android:shortcutShortLabel="@string/shortcut_focus">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="ru.ritm.planner"
+            android:targetClass="ru.ritm.planner.MainActivity" android:data="ritm://shortcut/focus" />
+    </shortcut>
+</shortcuts>
