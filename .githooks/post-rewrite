@@ -1,0 +1,7 @@
+#!/bin/sh
+# After git rebase / git pull --rebase ($1 = rebase) or commit --amend ($1 = amend, ignored)
+cat >/dev/null # drain the rewritten-commit list git writes to stdin
+[ "$1" = rebase ] || exit 0
+. "$(dirname "$0")/ritm-rebuild.sh"
+ritm_rebuild "$(git rev-parse -q --verify ORIG_HEAD)" HEAD "rebase"
+exit 0

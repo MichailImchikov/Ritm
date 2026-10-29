@@ -67,3 +67,5 @@ Windows 10/11, .NET Framework 4.8. Установка в профиль поль
 Сборка исходников: work/desktop/build.ps1 → outputs/Ritm. Установка: work/desktop/install.ps1. Проверки: Ritm.exe --self-test <пустая папка>; результат записывается в result.txt. Внешние пакеты не требуются.
 
 
+
+Автосборка после git: один раз выполнить powershell -ExecutionPolicy Bypass -File work/.githooks/install.ps1 (или git config core.hooksPath .githooks). После этого git pull/merge, checkout/switch другой ветки и rebase (в т.ч. pull --rebase) сами запускают desktop/build.ps1, если изменились desktop/*.cs, build.ps1, app.manifest, Ritm.exe.config или ritm.ico; иначе сборка пропускается. Ошибка сборки выводится в консоль, но git-операцию не отменяет. Пропустить один раз: RITM_SKIP_AUTOBUILD=1. Выключить: install.ps1 -Uninstall.
