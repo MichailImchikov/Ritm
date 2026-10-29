@@ -11,7 +11,7 @@ namespace Ritm {
  public sealed class BuildStatus {
   public string Message="Войдите в консоль стенда, чтобы видеть сборку Unity.";
   public string Step="",Elapsed="",Remaining="";
-  public double Percent; public bool HasProgress,Waiting,NeedsLogin,Active;
+  public double Percent; public bool HasProgress,Waiting,NeedsLogin,Active,Idle;
  }
  public sealed class BuildMonitor {
   const string Server="http://192.168.1.194:8780";
@@ -43,7 +43,7 @@ namespace Ritm {
   public static BuildStatus Parse(string json){
    var root=Json.Read<Dictionary<string,object>>(json);var jobs=Items(Get(root,"jobs")).Select(Obj).Where(j=>Text(j,"project")=="unity"&&Text(j,"kind")!="check").ToList();
    var job=jobs.FirstOrDefault(j=>Text(j,"status")=="running")??jobs.FirstOrDefault(j=>Text(j,"status")=="waiting");
-   if(job==null)return new BuildStatus{Message="Сейчас сборка Unity не выполняется."};
+   if(job==null)return new BuildStatus{Message="Сейчас сборка Unity не выполняется.",Idle=true};
    var progress=Obj(Get(job,"progress"));var build=Obj(Get(progress,"build"));var stage=Items(Get(progress,"stages")).Select(Obj).FirstOrDefault(x=>Text(x,"key")=="build");var detail=stage==null?new Dictionary<string,object>():Obj(Get(stage,"detail"));
    bool waiting=Text(job,"status")=="waiting"||Bool(progress,"waiting");bool active=Text(job,"status")=="running";double? pct=Number(Get(build,"percent"))??Number(Get(detail,"percent"))??Number(Get(stage??new Dictionary<string,object>(),"percent"));
    string step=waiting?"Ожидание подтверждения рассылки":Text(build,"label");if(step=="")step=Text(detail,"label");if(step==""&&stage!=null)step=Text(stage,"label");if(step=="")step=Text(progress,"stage");if(step=="")step="Сборка Unity";

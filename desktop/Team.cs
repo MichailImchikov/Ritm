@@ -11,6 +11,7 @@ namespace Ritm {
  public class TeamLink {public string Path {get;set;} public string Name {get;set;} public string User {get;set;} }
  public class TeamManifest {public string app {get;set;} public int version {get;set;} public string name {get;set;} public string createdUtc {get;set;} public string createdBy {get;set;} }
  public class TeamMember {public string name {get;set;} public string lastSeenUtc {get;set;} }
+ public sealed class TeamChange {public TaskItem Task;public string Project;public bool Added,AssignedToMe;}
  public sealed class TeamProbe {public string Path,Name;public bool Exists;public List<string> Members=new List<string>();}
  public sealed partial class Store {
   const string ManifestFile="ritm-project.json";
@@ -33,6 +34,14 @@ namespace Ritm {
   public static bool SamePerson(string a,string b){return a!=null&&b!=null&&string.Equals(a,b,StringComparison.CurrentCultureIgnoreCase);}
   // Личные задачи всегда «мои»; задачи общего проекта — если исполнитель совпадает с моим именем в этом проекте.
   public bool IsMine(TaskItem t){var team=Team(t.category);return team==null||SamePerson(t.assignee,team.User);}
+  // Что пришло от других участников с последнего TakeChanges — для уведомлений. Свои записи (тот же DeviceId) не считаются.
+  readonly List<TeamChange> changes=new List<TeamChange>();
+  void Track(TeamLink link,TaskItem before,TaskItem after){
+   if(after.deleted||after.recordType!="task"||after.deviceId==Settings.DeviceId)return;
+   bool added=before==null,assigned=!after.completed&&SamePerson(after.assignee,link.User)&&(before==null||!SamePerson(before.assignee,link.User));
+   if(added||assigned)changes.Add(new TeamChange{Task=after.Clone(),Project=link.Name,Added=added,AssignedToMe=assigned});
+  }
+  public List<TeamChange> TakeChanges(){var list=changes.ToList();changes.Clear();return list;}
   public string TeamError(string name){string e;return teamErrors.TryGetValue(name,out e)?e:null;}
   public string TeamStatus {get{var down=Teams.Where(t=>TeamError(t.Name)!=null).Select(t=>"«"+t.Name+"»").ToList();return down.Count==0?null:"Нет доступа к "+string.Join(", ",down)+" — изменения отправятся, когда папка станет доступна";}}
   public List<string> Members(string project){
@@ -77,7 +86,7 @@ namespace Ritm {
    var test=Path.Combine(path,".ritm-write-"+Guid.NewGuid().ToString("N"));File.WriteAllText(test,"test");File.Delete(test);
    if(!probe.Exists)Atomic(Path.Combine(path,ManifestFile),Json.Write(new TeamManifest{app="ritm-team",version=1,name=name,createdUtc=DateTime.UtcNow.ToString("o",CultureInfo.InvariantCulture),createdBy=user}));
    var link=new TeamLink{Path=path,Name=name,User=user};WriteMember(link);
-   Teams.Add(link);Settings.UserName=user;SavePreferences();Sync();
+   Teams.Add(link);Settings.UserName=user;SavePreferences();Sync();changes.RemoveAll(c=>c.Project==name);
    if(!items.Values.Any(t=>!t.deleted&&t.recordType=="project"&&t.category==name))Save(new TaskItem{title=name,category=name,recordType="project"},0);
    return link;
   }
@@ -113,7 +122,8 @@ namespace Ritm {
     // Файлы перечитываются только после изменения — в сети это заметно быстрее.
     DateTime stamp=File.GetLastWriteTimeUtc(file);Seen known;
     if(!seen.TryGetValue(file,out known)||known.Stamp!=stamp){try{known=new Seen{Stamp=stamp,Item=ReadRecord(file)};seen[file]=known;}catch{continue;}}
-    if(known.Item.category==link.Name&&Absorb(known.Item.Clone()))changed=true;
+    TaskItem before;items.TryGetValue(known.Item.id,out before);
+    if(known.Item.category==link.Name&&Absorb(known.Item.Clone())){changed=true;Track(link,before,items[known.Item.id]);}
    }
    foreach(var t in items.Values.Where(t=>t.category==link.Name).ToList()){
     var path=Path.Combine(dir,t.id+".json");Seen remote;

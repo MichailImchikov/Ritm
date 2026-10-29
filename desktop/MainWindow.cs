@@ -17,14 +17,14 @@ using System.Windows.Threading;
 
 namespace Ritm {
  public sealed class MainWindow:Window {
-  readonly Store store;readonly BuildMonitor buildMonitor;BuildStatus buildStatus=new BuildStatus();bool buildBusy;readonly GoogleDriveClient drive;readonly FocusTimer focus;readonly Dictionary<string,TextBox> quickInputs=new Dictionary<string,TextBox>();readonly ContentControl overview=new ContentControl();TextBlock focusClock,focusInfo,focusSessions;Path focusArc;Button focusToggle,focusModeButton,breakModeButton,themeButton;int pulse,stagger;bool entering;string renderKey="";
+  readonly Store store;readonly Notifier notifier;readonly BuildMonitor buildMonitor;BuildStatus buildStatus=new BuildStatus();bool buildBusy;readonly GoogleDriveClient drive;readonly FocusTimer focus;readonly Dictionary<string,TextBox> quickInputs=new Dictionary<string,TextBox>();readonly ContentControl overview=new ContentControl();TextBlock focusClock,focusInfo,focusSessions;Path focusArc;Button focusToggle,focusModeButton,breakModeButton,themeButton;int pulse,stagger;bool entering;string renderKey="";
   readonly StackPanel rail=new StackPanel();readonly ContentControl content=new ContentControl();readonly TextBlock title=UI.Text("",28,null,true),caption=UI.Text("",11,UI.Muted),sync=UI.Text("",10,UI.Muted);readonly StackPanel toasts=new StackPanel{HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Bottom,Margin=new Thickness(0,0,30,46)};
   Grid filtersGrid;readonly StackPanel layoutButtons=new StackPanel{Orientation=Orientation.Horizontal};Border layoutSwitch;Button boardLayoutButton,listLayoutButton,newTaskButton,chooseGitButton;readonly TextBox search=UI.Input("");readonly ComboBox importance=new ComboBox(),filter=new ComboBox(),people=new ComboBox(),sorting=new ComboBox();string person="";List<string> peopleKeys=new List<string>();const string Mine="\u0001me",Nobody="\u0001none";readonly DispatcherTimer timer;
   string gitState="unknown",gitMessage="Выберите папку проекта.";int gitCheckVersion;bool gitUpdating;string view="board",project="",cloudStatus="";bool rendering,cloudBusy;DateTime selected=DateTime.Today,anchor=DateTime.Today,lastCloud=DateTime.MinValue;bool week;
   static readonly CultureInfo ru=new CultureInfo("ru-RU");const string TaskFormat="RitmTaskId";Action closeSlots;
   readonly Canvas dragLayer=new Canvas{IsHitTestVisible=false};readonly Dictionary<string,FrameworkElement> cardsById=new Dictionary<string,FrameworkElement>();TaskItem dragTask;DragGhost ghost;string landingId;double landingOpacity=1;
   public MainWindow(Store data){
-   store=data;buildMonitor=new BuildMonitor(store.Root);view=store.GetTaskLayout("tab:tasks","board");drive=new GoogleDriveClient(store.Root);focus=new FocusTimer(store.Settings.Focus);store.Settings.Focus=focus.State;if(string.IsNullOrEmpty(store.Settings.Theme))store.SetTheme("dark");UI.SetPalette(store.Settings.Palette);UI.SetTheme(store.Settings.Theme);Fx.Enabled=!store.Settings.ReduceMotion;
+   store=data;notifier=new Notifier(this,store.Settings,(text,open)=>Toast(text,open==null?null:"Открыть",open,8));buildMonitor=new BuildMonitor(store.Root);view=store.GetTaskLayout("tab:tasks","board");drive=new GoogleDriveClient(store.Root);focus=new FocusTimer(store.Settings.Focus);store.Settings.Focus=focus.State;if(string.IsNullOrEmpty(store.Settings.Theme))store.SetTheme("dark");UI.SetPalette(store.Settings.Palette);UI.SetTheme(store.Settings.Theme);Fx.Enabled=!store.Settings.ReduceMotion;
    Title="Ритм";Width=1280;Height=840;MinWidth=1000;MinHeight=650;WindowStartupLocation=WindowStartupLocation.CenterScreen;Background=UI.Canvas;TaskbarItemInfo=new TaskbarItemInfo();
    try{Icon=System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(System.Drawing.Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location).Handle,Int32Rect.Empty,BitmapSizeOptions.FromEmptyOptions());}catch{}
    var shell=new Grid{Background=UI.Canvas};shell.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(232)});shell.ColumnDefinitions.Add(new ColumnDefinition());Content=shell;
@@ -40,7 +40,7 @@ namespace Ritm {
    filter.ItemsSource=new[]{"Все задачи","На сегодня","Без даты","Просрочено"};filter.SelectedIndex=0;filter.Width=135;System.Windows.Automation.AutomationProperties.SetName(filter,"Фильтр по дате");Grid.SetColumn(filter,3);tools.Children.Add(filter);importance.SelectionChanged+=delegate{if(!rendering)Refresh();};filter.SelectionChanged+=delegate{if(!rendering)Refresh();};DockPanel.SetDock(tools,Dock.Top);page.Children.Add(tools);
    var footer=new DockPanel{Margin=new Thickness(0,15,0,0)};footer.Children.Add(sync);var keys=UI.Text("Ctrl+N — задача    Ctrl+F — поиск    Ctrl+1…4 — разделы",10,UI.Muted);keys.HorizontalAlignment=HorizontalAlignment.Right;footer.Children.Add(keys);DockPanel.SetDock(footer,Dock.Bottom);page.Children.Add(footer);page.Children.Add(content);
    PreviewKeyDown+=(s,e)=>{bool ctrl=(Keyboard.Modifiers&ModifierKeys.Control)!=0;if(e.Key==Key.N&&ctrl){Edit(null,view=="today"?UI.Date(DateTime.Today):null);e.Handled=true;}if(e.Key==Key.F&&ctrl){search.Focus();search.SelectAll();e.Handled=true;}if(e.Key==Key.F5){store.Sync();RunCloudSync();Refresh();e.Handled=true;}if(ctrl&&e.Key>=Key.D1&&e.Key<=Key.D4){Go(new[]{"today","board","calendar","list"}[e.Key-Key.D1]);e.Handled=true;}};
-   timer=new DispatcherTimer{Interval=TimeSpan.FromSeconds(1)};timer.Tick+=delegate{pulse++;if(pulse%60==0){CheckGit();CheckBuild();}bool ended=focus.Tick();if(ended){store.SaveLocalPreferences();if(view=="today")Refresh();FocusEnded();}UpdateFocus();if(pulse%5==0){if(store.Sync())Refresh();else UpdateStatus();if(DateTime.UtcNow-lastCloud>TimeSpan.FromSeconds(20))RunCloudSync();}};timer.Start();Closed+=delegate{timer.Stop();};Loaded+=delegate{RunCloudSync();CheckGit();CheckBuild();};Refresh();UpdateFocus();
+   timer=new DispatcherTimer{Interval=TimeSpan.FromSeconds(1)};timer.Tick+=delegate{pulse++;if(pulse%60==0){CheckGit();CheckBuild();}bool ended=focus.Tick();if(ended){store.SaveLocalPreferences();if(view=="today")Refresh();FocusEnded();}UpdateFocus();if(pulse%5==0){if(store.Sync())Refresh();else UpdateStatus();NotifyTeamChanges();if(DateTime.UtcNow-lastCloud>TimeSpan.FromSeconds(20))RunCloudSync();}};timer.Start();Closed+=delegate{timer.Stop();notifier.Dispose();};Loaded+=delegate{RunCloudSync();CheckGit();CheckBuild();NotifyTeamChanges();};Refresh();UpdateFocus();
   }
   List<TaskItem> Tasks{get{return store.Tasks;}}
   void ToggleTheme(){Fx.Crossfade(this,()=>{store.SetTheme(UI.Dark?"light":"dark");UI.SetPalette(store.Settings.Palette);UI.SetTheme(store.Settings.Theme);UpdateThemeButton();Refresh();});}
@@ -108,6 +108,8 @@ namespace Ritm {
    if(gitUpdating)return;string dir=store.Settings.GitDirectory;int version=++gitCheckVersion;if(string.IsNullOrEmpty(dir)){gitState="unknown";gitMessage="Выберите папку проекта.";Refresh();return;}
    gitState="checking";gitMessage="Проверка main…";Refresh();var result=await Task.Run(()=>GitMainDate(dir));
    if(version!=gitCheckVersion||store.Settings.GitDirectory!=dir)return;gitState=result.Item1;gitMessage=result.Item2;Refresh();
+   // О каждом новом коммите main сообщаем один раз, в том числе после перезапуска.
+   if(gitState=="behind"&&result.Item3!=null&&result.Item3!=store.Settings.NotifiedMain){store.Settings.NotifiedMain=result.Item3;store.SaveLocalPreferences();notifier.Show(Notifications.MainUpdated,"Обновился main · "+GitProjectName(),result.Item4+" Откройте Git-проект и нажмите «Принять».",()=>Go("git"));}
   }
   string GitProjectName(){string dir=store.Settings.GitDirectory;if(string.IsNullOrEmpty(dir))return "Git-проект";return System.IO.Path.GetFileName(dir.TrimEnd(System.IO.Path.DirectorySeparatorChar,System.IO.Path.AltDirectorySeparatorChar));}
   void ChooseGitFolder(){using(var dialog=new System.Windows.Forms.FolderBrowserDialog()){dialog.Description="Выберите папку Git-проекта";if(dialog.ShowDialog()==System.Windows.Forms.DialogResult.OK){store.Settings.GitDirectory=dialog.SelectedPath;store.SaveLocalPreferences();CheckGit();}}}
@@ -129,12 +131,12 @@ namespace Ritm {
    string remote=GitCommand(dir,"remote get-url origin");Uri uri;bool local=Uri.TryCreate(remote,UriKind.Absolute,out uri)&&uri.Host.EndsWith(".local",StringComparison.OrdinalIgnoreCase);
    if(branch=="main"){GitCommand(dir,"fetch --no-tags origin refs/heads/main",local,false,300000);GitCommand(dir,"merge --ff-only FETCH_HEAD",false,false,300000);}else GitCommand(dir,"fetch --no-tags origin refs/heads/main:refs/heads/main",local,false,300000);return null;
    }catch(Exception e){return "Не удалось принять изменения. "+e.Message;}}
-  async void CheckBuild(){if(buildBusy)return;buildBusy=true;try{buildStatus=await Task.Run(()=>buildMonitor.Read());}finally{buildBusy=false;}Refresh();}
+  async void CheckBuild(){if(buildBusy)return;buildBusy=true;var previous=buildStatus;try{buildStatus=await Task.Run(()=>buildMonitor.Read());}finally{buildBusy=false;}Refresh();if(previous.Active&&buildStatus.Idle)notifier.Show(Notifications.BuildDone,"Сборка Unity завершена",previous.Message+" закончилась. Проверьте результат на стенде.",()=>Go("git"));}
   void BuildLogin(){
    var w=new Window{Owner=this,Title="Вход в консоль стенда",Width=400,SizeToContent=SizeToContent.Height,ResizeMode=ResizeMode.NoResize,WindowStartupLocation=WindowStartupLocation.CenterOwner,Background=UI.Canvas};var panel=new StackPanel{Margin=new Thickness(24)};w.Content=panel;panel.Children.Add(UI.Text("Пароль консоли стенда",16,null,true));UI.Gap(panel,10);var password=new PasswordBox{Padding=new Thickness(10),MinWidth=260};panel.Children.Add(password);UI.Gap(panel,10);panel.Children.Add(UI.Text("Пароль сохраняется зашифрованным для вашей учётной записи Windows.",11,UI.Muted));UI.Gap(panel,12);var error=UI.Text("",11,UI.Muted);panel.Children.Add(error);Button login=null;login=UI.Button("Войти",async ()=>{string value=password.Password;if(value=="")return;login.IsEnabled=false;error.Text="Вход…";try{await Task.Run(()=>buildMonitor.Login(value));password.Clear();w.DialogResult=true;}catch(Exception){error.Text="Не удалось войти. Проверьте пароль и доступ к серверу.";login.IsEnabled=true;}},true);panel.Children.Add(login);w.Loaded+=delegate{password.Focus();};if(w.ShowDialog()==true)CheckBuild();
   }
   static string GitCommand(string dir,string args,bool local=false,bool allowNotAncestor=false,int timeout=30000){
-   var start=new System.Diagnostics.ProcessStartInfo("git","-C \""+dir+"\" "+(local?"-c http.proxy= ":"")+args){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
+   var start=new System.Diagnostics.ProcessStartInfo("git","-C \""+dir+"\" "+(local?"-c http.proxy= ":"")+args){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,StandardOutputEncoding=System.Text.Encoding.UTF8};
    if(local){start.EnvironmentVariables["NO_PROXY"]="*";start.EnvironmentVariables["no_proxy"]="*";start.EnvironmentVariables["HTTP_PROXY"]="";start.EnvironmentVariables["HTTPS_PROXY"]="";start.EnvironmentVariables["ALL_PROXY"]="";start.EnvironmentVariables["http_proxy"]="";start.EnvironmentVariables["https_proxy"]="";start.EnvironmentVariables["all_proxy"]="";}start.EnvironmentVariables["GIT_TERMINAL_PROMPT"]="0";start.EnvironmentVariables["GCM_INTERACTIVE"]="Never";
    using(var process=System.Diagnostics.Process.Start(start)){
     var stdout=process.StandardOutput.ReadToEndAsync();var stderr=process.StandardError.ReadToEndAsync();
@@ -142,15 +144,29 @@ namespace Ritm {
     Task.WaitAll(stdout,stderr);if(allowNotAncestor&&process.ExitCode==1)return "not-ancestor";if(process.ExitCode!=0)throw new Exception(string.IsNullOrWhiteSpace(stderr.Result)?"Проверьте доступ к серверу origin и состояние репозитория.":stderr.Result.Trim());return stdout.Result.Trim();
    }
   }
-  static Tuple<string,string> GitMainDate(string dir){string temp=null;try{
+  static Tuple<string,string,string,string> GitMainDate(string dir){string temp=null;try{
    string remote=GitCommand(dir,"remote get-url origin");if(string.IsNullOrWhiteSpace(remote)||remote.IndexOf('"')>=0||remote.IndexOf('\n')>=0||remote.IndexOf('\r')>=0)throw new Exception("Не удалось определить сервер origin.");
    temp=System.IO.Path.Combine(System.IO.Path.GetTempPath(),"ritm-git-"+Guid.NewGuid().ToString("N"));System.IO.Directory.CreateDirectory(temp);
    Uri uri;bool local=Uri.TryCreate(remote,UriKind.Absolute,out uri)&&uri.Host.EndsWith(".local",StringComparison.OrdinalIgnoreCase);GitCommand(temp,"init --bare");GitCommand(temp,"-c protocol.file.allow=always fetch --no-tags --depth=1 --filter=tree:0 -- \""+remote+"\" refs/heads/main",local);
    string output=GitCommand(temp,"log -1 --format=%cI FETCH_HEAD");DateTimeOffset date;if(!DateTimeOffset.TryParse(output,CultureInfo.InvariantCulture,DateTimeStyles.None,out date))throw new Exception("Не удалось прочитать дату коммита.");
-   string hash=GitCommand(temp,"rev-parse FETCH_HEAD");string state="behind";
+   string hash=GitCommand(temp,"rev-parse FETCH_HEAD"),summary="";try{summary=GitCommand(temp,"log -1 --format=%an:%x20%s FETCH_HEAD");summary=(summary.Length>120?summary.Substring(0,118).TrimEnd()+"…":summary)+".";}catch(Exception){}string state="behind";
    try{string ancestor=GitCommand(dir,"merge-base --is-ancestor "+hash+" refs/heads/main",false,true);if(ancestor!="not-ancestor")state="current";}catch(Exception){}
-   return Tuple.Create(state,"Последний коммит main на сервере: "+date.ToLocalTime().ToString("dd.MM.yyyy HH:mm")+(state=="current"?" · локальная main обновлена":" · локальную main нужно обновить"));
-   }catch(Exception e){return Tuple.Create("unknown","Не удалось проверить main на сервере. "+e.Message);}finally{if(temp!=null)try{System.IO.Directory.Delete(temp,true);}catch{}}}
+   return Tuple.Create(state,"Последний коммит main на сервере: "+date.ToLocalTime().ToString("dd.MM.yyyy HH:mm")+(state=="current"?" · локальная main обновлена":" · локальную main нужно обновить"),hash,summary);
+   }catch(Exception e){return Tuple.Create("unknown","Не удалось проверить main на сервере. "+e.Message,(string)null,"");}finally{if(temp!=null)try{System.IO.Directory.Delete(temp,true);}catch{}}}
+  // ——— Уведомления ———
+  void NotifyTeamChanges(){
+   foreach(var group in store.TakeChanges().GroupBy(c=>c.Project)){
+    string name=group.Key;var mine=group.Where(c=>c.AssignedToMe).ToList();bool assignedShown=Notifications.IsOn(store.Settings,Notifications.Assigned);
+    // Новая задача, назначенная на вас, приходит одним уведомлением «для вас», а не двумя.
+    var added=group.Where(c=>c.Added&&!(c.AssignedToMe&&assignedShown)).ToList();
+    if(mine.Count==1)notifier.Show(Notifications.Assigned,"Задача для вас · "+Short(name),"«"+Short(mine[0].Task.title)+"»"+Author(mine[0].Task),()=>OpenTask(mine[0].Task.id));
+    else if(mine.Count>1)notifier.Show(Notifications.Assigned,"Задачи для вас · "+Short(name),"На вас назначено "+mine.Count+" "+Plural(mine.Count,"задача","задачи","задач")+".",()=>{person=Mine;Go("board",name);});
+    if(added.Count==1)notifier.Show(Notifications.NewTask,"Новая задача · "+Short(name),"«"+Short(added[0].Task.title)+"»"+Author(added[0].Task),()=>OpenTask(added[0].Task.id));
+    else if(added.Count>1)notifier.Show(Notifications.NewTask,"Новые задачи · "+Short(name),"Добавлено "+added.Count+" "+Plural(added.Count,"задача","задачи","задач")+".",()=>Go("board",name));
+   }
+  }
+  static string Author(TaskItem t){return t.createdBy==null?"":" · автор: "+t.createdBy;}
+  void OpenTask(string id){var task=Tasks.FirstOrDefault(t=>t.id==id);if(task==null)return;Go("board",task.category);Edit(task);}
   void Appear(UIElement e){if(entering)Fx.Enter(e,60+Math.Min(stagger++,12)*35,14);}
   // ——— Канбан ———
   UIElement Board(List<TaskItem> tasks){var grid=new Grid();for(int c=0;c<3;c++){grid.ColumnDefinitions.Add(new ColumnDefinition());if(c<2)grid.ColumnDefinitions.Add(new ColumnDefinition{Width=new GridLength(16)});}var states=new[]{"todo","doing","done"};var labels=new[]{"К выполнению","В работе","Готово"};
