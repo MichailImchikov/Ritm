@@ -1,6 +1,7 @@
 #!/bin/sh
-# After git checkout / git switch: $1 old HEAD, $2 new HEAD, $3 is 1 for a branch switch (0 for file checkout)
-[ "$3" = 1 ] || exit 0
+# After git checkout / git switch: $1 old HEAD, $2 new HEAD, $3 is 1 for a branch switch (0 for file checkout);
+# checkout -b on the same commit changes nothing
+[ "$3" = 1 ] && [ "$1" != "$2" ] || exit 0
 # Rebase checks out its base on the way; post-rewrite rebuilds once it finishes
 gitdir=$(git rev-parse --git-dir)
 [ -d "$gitdir/rebase-merge" ] || [ -d "$gitdir/rebase-apply" ] && exit 0
