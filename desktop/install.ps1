@@ -1,4 +1,4 @@
-$ErrorActionPreference='Stop'
+﻿$ErrorActionPreference='Stop'
 $sourceDirectory=Join-Path $PSScriptRoot '../../outputs/Ritm'
 $releaseVersion=(Get-Item -LiteralPath (Join-Path $sourceDirectory 'Ritm.exe')).VersionInfo.FileVersion
 $applicationDirectory=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) ('RitmPlanner/App/'+$releaseVersion)
