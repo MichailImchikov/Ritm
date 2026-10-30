@@ -7,7 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 
 namespace Ritm {
- // Общий проект — папка в локальной сети: ritm-project.json (название), members\ (участники), tasks\ (по файлу на задачу).
+ // Общий проект — папка в локальной сети: ritm-project.json (название), members\ (участники), tasks\ (по файлу на задачу), attachments\ (фото и документы задач).
  public class TeamLink {public string Path {get;set;} public string Name {get;set;} public string User {get;set;} }
  public class TeamManifest {public string app {get;set;} public int version {get;set;} public string name {get;set;} public string createdUtc {get;set;} public string createdBy {get;set;} }
  public class TeamMember {public string name {get;set;} public string lastSeenUtc {get;set;} }
@@ -82,7 +82,7 @@ namespace Ritm {
    string name=probe.Exists?probe.Name:(projectName??"").Trim();
    if(name.Length==0||name.Length>50||name=="Без проекта")throw new Exception("Название проекта: от 1 до 50 символов.");
    if(ProjectNames.Any(n=>n.Equals(name,StringComparison.OrdinalIgnoreCase)))throw new Exception("У вас уже есть проект «"+name+"». Переименуйте его, чтобы подключить общий проект с таким названием.");
-   Directory.CreateDirectory(Path.Combine(path,"tasks"));Directory.CreateDirectory(Path.Combine(path,"members"));
+   Directory.CreateDirectory(Path.Combine(path,"tasks"));Directory.CreateDirectory(Path.Combine(path,"members"));Directory.CreateDirectory(Path.Combine(path,FilesFolder));
    var test=Path.Combine(path,".ritm-write-"+Guid.NewGuid().ToString("N"));File.WriteAllText(test,"test");File.Delete(test);
    if(!probe.Exists)Atomic(Path.Combine(path,ManifestFile),Json.Write(new TeamManifest{app="ritm-team",version=1,name=name,createdUtc=DateTime.UtcNow.ToString("o",CultureInfo.InvariantCulture),createdBy=user}));
    var link=new TeamLink{Path=path,Name=name,User=user};WriteMember(link);
@@ -126,7 +126,7 @@ namespace Ritm {
     if(known.Item.category==link.Name&&Absorb(known.Item.Clone())){changed=true;Track(link,before,items[known.Item.id]);}
    }
    foreach(var t in items.Values.Where(t=>t.category==link.Name).ToList()){
-    var path=Path.Combine(dir,t.id+".json");Seen remote;
+    Place(t);var path=Path.Combine(dir,t.id+".json");Seen remote;
     if(present.Contains(t.id)&&(!seen.TryGetValue(path,out remote)||Compare(t,remote.Item)<=0))continue;
     Atomic(path,Json.Write(t));seen[path]=new Seen{Stamp=File.GetLastWriteTimeUtc(path),Item=t.Clone()};
    }

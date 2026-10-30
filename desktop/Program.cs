@@ -24,7 +24,11 @@ namespace Ritm {
     if(args[0]=="--render-calendar")preview.PreviewView("calendar");if(args[0]=="--render-day")preview.PreviewView("today");
     if(args[0]=="--render-project-list"){preview.PreviewView("calendar");preview.PreviewTaskLayout("list","Ритм");}if(args[0]=="--render-day-board"){preview.PreviewView("today");preview.PreviewTaskLayout("board");}if(args[0]=="--render-settings")target=new SettingsWindow(null,data,new GoogleDriveClient(temp),()=>{},()=>{});
     if(args[0]=="--render-editor")target=new TaskEditor(null,data.Tasks[0],data.ProjectNames,t=>true,t=>{});
-    var visual=(FrameworkElement)target.Content;int width=target==preview?1280:620,height=target==preview?840:800;
+    if(args[0]=="--render-attachments"||args[0]=="--render-photo"){var t=data.Tasks.Find(x=>x.subtasks.Count>0);var pic=Path.Combine(temp,"Макет экрана.png");SamplePicture(pic);data.Attach(t,pic);data.Attach(t,"Смета на ноябрь.pdf",new byte[]{1});t=data.Save(t,t.version);
+     target=args[0]=="--render-photo"?(Window)new PhotoViewer(null,t.attachments.FindAll(a=>a.IsImage),0,a=>data.AttachmentPath(t,a)):new TaskEditor(null,t,data.ProjectNames,x=>true,x=>{},null,data);
+     // Миниатюры грузятся в фоне — даём им прийти до снимка.
+     Thread.Sleep(700);System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Background,new Action(()=>{}));}
+    var visual=(FrameworkElement)target.Content;int width=target==preview||target is PhotoViewer?1280:620,height=target==preview||target is PhotoViewer?840:args[0]=="--render-attachments"?1080:800;
     visual.Measure(new Size(width,height));visual.Arrange(new Rect(0,0,width,height));visual.UpdateLayout();if(args[0]=="--render-toggle"){UI.SetTheme("light");visual.UpdateLayout();}
     var bitmap=new System.Windows.Media.Imaging.RenderTargetBitmap(width,height,96,96,System.Windows.Media.PixelFormats.Pbgra32);bitmap.Render(visual);
     var png=new System.Windows.Media.Imaging.PngBitmapEncoder();png.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));using(var file=File.Create(args[1]))png.Save(file);
@@ -39,6 +43,11 @@ namespace Ritm {
      string root=args.Length==2&&args[0]=="--data"?Path.GetFullPath(args[1]):Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"RitmPlanner","Data");var store=new Store(root);app.Run(new MainWindow(store));return 0;
     }catch(Exception e){MessageBox.Show("Не удалось открыть Ритм.\n"+e.Message+"\nЛокальные данные не удалены.","Ритм",MessageBoxButton.OK,MessageBoxImage.Error);return 1;}
    }
+  }
+  // Пример фото для превью вложений.
+  static void SamplePicture(string path){
+   var v=new System.Windows.Media.DrawingVisual();using(var dc=v.RenderOpen()){dc.DrawRectangle(new System.Windows.Media.LinearGradientBrush(System.Windows.Media.Color.FromRgb(0x56,0x52,0x84),System.Windows.Media.Color.FromRgb(0xE9,0xA8,0x7C),35),null,new Rect(0,0,1600,1000));dc.DrawEllipse(System.Windows.Media.Brushes.White,null,new Point(1150,330),150,150);}
+   var bmp=new System.Windows.Media.Imaging.RenderTargetBitmap(1600,1000,96,96,System.Windows.Media.PixelFormats.Pbgra32);bmp.Render(v);var png=new System.Windows.Media.Imaging.PngBitmapEncoder();png.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));using(var file=File.Create(path))png.Save(file);
   }
  }
 }
