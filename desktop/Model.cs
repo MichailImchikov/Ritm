@@ -14,7 +14,7 @@ namespace Ritm {
  }
  public class TaskItem {
   public string id {get;set;} public string title {get;set;} public string description {get;set;}
-  public string date {get;set;} public int priority {get;set;} public string category {get;set;}
+  public bool isMeeting {get;set;} public int? meetingHue {get;set;} public int? meetingTransparency {get;set;} public string meetingColor {get;set;} public string meetingTime {get;set;} public List<int> meetingDays {get;set;} public string date {get;set;} public int priority {get;set;} public string category {get;set;}
   public bool completed {get;set;} public List<Step> subtasks {get;set;}
   public int version {get;set;} public long createdAt {get;set;} public string updatedUtc {get;set;}
   public string deviceId {get;set;} public bool deleted {get;set;}
@@ -31,7 +31,7 @@ namespace Ritm {
    if(description.Length>10000)throw new Exception("Описание слишком длинное. Максимум — 10 000 символов.");
    if(string.IsNullOrWhiteSpace(category)||category.Length>50)throw new Exception("Введите категорию — до 50 символов.");
    if(date!=null&&(!DateTime.TryParseExact(date,"yyyy-MM-dd",CultureInfo.InvariantCulture,DateTimeStyles.None,out d)||d.Year<1900))throw new Exception("Проверьте дату задачи.");
-   if(priority<1||priority>4)throw new Exception("Некорректный приоритет.");
+   if(isMeeting){if(meetingHue.HasValue&&(meetingHue<0||meetingHue>360)||meetingTransparency.HasValue&&(meetingTransparency<0||meetingTransparency>100))throw new Exception("Проверьте цвет и прозрачность встречи.");DateTime time;if(date==null||!DateTime.TryParseExact(meetingTime,"HH:mm",CultureInfo.InvariantCulture,DateTimeStyles.None,out time))throw new Exception("Укажите дату и время встречи (чч:мм).");if(meetingDays!=null&&(meetingDays.Count>7||meetingDays.Any(x=>x<0||x>6)||meetingDays.Distinct().Count()!=meetingDays.Count))throw new Exception("Проверьте дни встреч.");} if(priority<1||priority>4)throw new Exception("Некорректный приоритет.");
    if(string.IsNullOrEmpty(recordType))recordType="task";
    if(recordType!="task"&&recordType!="project")throw new Exception("Некорректный тип записи.");
    if(completed)status="done";else if(string.IsNullOrEmpty(status)||status=="done")status="todo";
@@ -52,7 +52,7 @@ namespace Ritm {
  }
  public class BuildLink {public string Key {get;set;} public string Name {get;set;}}
  public class ProjectGitSettings {public List<BuildLink> Builds {get;set;} public string Directory {get;set;} public string Branch {get;set;} public bool BuildEnabled {get;set;}}
- public class Preferences {public int SidebarTextScale {get;set;} public int MainTextScale {get;set;} public Dictionary<string,bool> ProjectServerViews {get;set;} public Dictionary<string,string> ProjectAliases {get;set;} public Dictionary<string,ProjectGitSettings> ProjectGit {get;set;} public string GitDirectory {get;set;} public string SyncDirectory {get;set;} public string DeviceId {get;set;} public string Theme {get;set;} public string Palette {get;set;} public FocusState Focus {get;set;} public string FocusTaskId {get;set;} public Dictionary<string,string> TaskLayouts {get;set;} public bool ReduceMotion {get;set;} public List<TeamLink> Teams {get;set;} public string UserName {get;set;} public int TaskSort {get;set;} public bool NotificationsMuted {get;set;} public bool NotificationsInAppOnly {get;set;} public Dictionary<string,bool> Notifications {get;set;} public string NotifiedMain {get;set;} public Dictionary<string,string> NotifiedBranches {get;set;} }
+ public class Preferences {public Dictionary<string,string> MeetingNotified {get;set;} public int SidebarTextScale {get;set;} public int MainTextScale {get;set;} public Dictionary<string,bool> ProjectServerViews {get;set;} public Dictionary<string,string> ProjectAliases {get;set;} public Dictionary<string,ProjectGitSettings> ProjectGit {get;set;} public string GitDirectory {get;set;} public string SyncDirectory {get;set;} public string DeviceId {get;set;} public string Theme {get;set;} public string Palette {get;set;} public FocusState Focus {get;set;} public string FocusTaskId {get;set;} public Dictionary<string,string> TaskLayouts {get;set;} public bool ReduceMotion {get;set;} public List<TeamLink> Teams {get;set;} public string UserName {get;set;} public int TaskSort {get;set;} public bool NotificationsMuted {get;set;} public bool NotificationsInAppOnly {get;set;} public Dictionary<string,bool> Notifications {get;set;} public string NotifiedMain {get;set;} public Dictionary<string,string> NotifiedBranches {get;set;} }
  public class BackupDocument {public string app {get;set;} public int version {get;set;} public List<TaskItem> tasks {get;set;} public List<TaskItem> projects {get;set;} }
  public static class Json {
   public static string Write(object value){return new JavaScriptSerializer {MaxJsonLength=10000000}.Serialize(value);}

@@ -37,7 +37,7 @@ namespace Ritm {
   // Что пришло от других участников с последнего TakeChanges — для уведомлений. Свои записи (тот же DeviceId) не считаются.
   readonly List<TeamChange> changes=new List<TeamChange>();
   void Track(TeamLink link,TaskItem before,TaskItem after){
-   if(after.deleted||after.recordType!="task"||after.deviceId==Settings.DeviceId)return;
+   if(after.deleted||after.isMeeting||after.recordType!="task"||after.deviceId==Settings.DeviceId)return;
    bool added=before==null,assigned=!after.completed&&SamePerson(after.assignee,link.User)&&(before==null||!SamePerson(before.assignee,link.User));
    if(added||assigned)changes.Add(new TeamChange{Task=after.Clone(),Project=link.Name,Added=added,AssignedToMe=assigned});
   }

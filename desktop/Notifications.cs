@@ -18,6 +18,7 @@ namespace Ritm {
  public static class Notifications {
   internal static readonly List<NotificationKind> registry=new List<NotificationKind>();
   // Новые виды объявляйте здесь: код не меняйте после выпуска — по нему хранится выбор пользователя.
+  public static readonly NotificationKind Meeting=new NotificationKind("meetings.reminder","Уведомления о встречах","За 10 минут до начала встречи и в момент её начала.");
   public static readonly NotificationKind NewTask=new NotificationKind("tasks.new","Новые задачи в общих проектах","Другой участник добавил задачу в общий проект.");
   public static readonly NotificationKind Assigned=new NotificationKind("tasks.assigned","Задача назначена на вас","Вас сделали исполнителем задачи в общем проекте.");
   public static readonly NotificationKind MainUpdated=new NotificationKind("git.main","Обновление main","На сервере origin появился новый коммит main, которого нет в локальной main.");
