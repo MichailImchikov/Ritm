@@ -22,6 +22,7 @@ namespace Ritm {
   public static readonly NotificationKind NewTask=new NotificationKind("tasks.new","Новые задачи в общих проектах","Другой участник добавил задачу в общий проект.");
   public static readonly NotificationKind Assigned=new NotificationKind("tasks.assigned","Задача назначена на вас","Вас сделали исполнителем задачи в общем проекте.");
   public static readonly NotificationKind MainUpdated=new NotificationKind("git.main","Обновление main","На сервере origin появился новый коммит main, которого нет в локальной main.");
+  public static readonly NotificationKind FolderChanged=new NotificationKind("folder.changed","Изменения в папке","Новые и изменённые файлы в отслеживаемой папке.");
   public static readonly NotificationKind BuildDone=new NotificationKind("build.done","Сборка Unity завершена","Сборка Unity на стенде закончилась.");
   public static ReadOnlyCollection<NotificationKind> All {get{return registry.AsReadOnly();}}
   public static bool Enabled(Preferences p){return !p.NotificationsMuted;}
