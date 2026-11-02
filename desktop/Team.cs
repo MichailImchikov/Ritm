@@ -12,6 +12,11 @@ namespace Ritm {
  public class TeamManifest {public string app {get;set;} public int version {get;set;} public string name {get;set;} public string createdUtc {get;set;} public string createdBy {get;set;} }
  public class TeamMember {public string name {get;set;} public string lastSeenUtc {get;set;} }
  public sealed class TeamChange {public TaskItem Task;public string Project;public bool Added,AssignedToMe;}
+ // Снимок для телефона на Google Диске: какие общие проекты подключены, где лежат и под каким именем в них участвует пользователь.
+ public class PhoneTeam {public string name {get;set;} public string path {get;set;} public string user {get;set;} public List<string> members {get;set;} }
+ public class PhoneTeams {public string app {get;set;} public int version {get;set;} public List<PhoneTeam> teams {get;set;} }
+ // Событие компьютера, которое телефон покажет как своё уведомление.
+ public class PhoneNotice {public string id {get;set;} public string kind {get;set;} public string title {get;set;} public string text {get;set;} public string createdUtc {get;set;} }
  public sealed class TeamProbe {public string Path,Name;public bool Exists;public List<string> Members=new List<string>();}
  public sealed partial class Store {
   const string ManifestFile="ritm-project.json";
@@ -38,9 +43,15 @@ namespace Ritm {
   readonly List<TeamChange> changes=new List<TeamChange>();
   void Track(TeamLink link,TaskItem before,TaskItem after){
    if(after.deleted||after.isMeeting||after.recordType!="task"||after.deviceId==Settings.DeviceId)return;
-   bool added=before==null,assigned=!after.completed&&SamePerson(after.assignee,link.User)&&(before==null||!SamePerson(before.assignee,link.User));
+   // Задача, созданная пользователем на телефоне, тоже приходит с другого устройства, но новой для него не является.
+   bool added=before==null&&!SamePerson(after.createdBy,link.User),assigned=!after.completed&&SamePerson(after.assignee,link.User)&&(before==null||!SamePerson(before.assignee,link.User));
    if(added||assigned)changes.Add(new TeamChange{Task=after.Clone(),Project=link.Name,Added=added,AssignedToMe=assigned});
   }
+  public List<TaskItem> TeamRecords {get{return items.Values.Where(t=>IsTeamName(t.category)).Select(t=>t.Clone()).ToList();}}
+  public string PhoneTeamsJson {get{return Json.Write(new PhoneTeams{app="ritm-teams",version=1,teams=Teams.OrderBy(t=>t.Name,StringComparer.Ordinal).Select(t=>new PhoneTeam{name=t.Name,path=t.Path,user=t.User,members=Members(t.Name)}).ToList()});}}
+  // Правки с телефона, пришедшие через Google Диск. На сервер их отправит обычная синхронизация общих проектов.
+  // Записи отключённых проектов пропускаются: они не должны вернуться как личные.
+  public bool MergeTeamRecords(IEnumerable<TaskItem> incoming){bool changed=false;foreach(var t in incoming){t.Validate();if(!IsTeamName(t.category))continue;DateTimeOffset stamp;if(t.version<1||string.IsNullOrEmpty(t.deviceId)||!DateTimeOffset.TryParse(t.updatedUtc,CultureInfo.InvariantCulture,DateTimeStyles.RoundtripKind,out stamp))throw new Exception("Некорректная облачная запись.");if(Absorb(t))changed=true;}return changed;}
   public List<TeamChange> TakeChanges(){var list=changes.ToList();changes.Clear();return list;}
   public string TeamError(string name){string e;return teamErrors.TryGetValue(name,out e)?e:null;}
   public string TeamStatus {get{var down=Teams.Where(t=>TeamError(t.Name)!=null).Select(t=>"«"+t.Name+"»").ToList();return down.Count==0?null:"Нет доступа к "+string.Join(", ",down)+" — изменения отправятся, когда папка станет доступна";}}

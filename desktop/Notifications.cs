@@ -8,11 +8,11 @@ namespace Ritm {
  // Вид уведомления. Конструктор сам вносит вид в реестр, а «Настройки → Уведомления» строят переключатели по реестру,
  // поэтому уведомления без переключателя не бывает. Показать уведомление можно только по виду — см. Notifier.Show.
  public sealed class NotificationKind {
-  public readonly string Id,Title,Description;public readonly bool DefaultOn;
-  public NotificationKind(string id,string title,string description,bool defaultOn=true){
+  public readonly string Id,Title,Description;public readonly bool DefaultOn,ToPhone;
+  public NotificationKind(string id,string title,string description,bool defaultOn=true,bool toPhone=false){
    if(string.IsNullOrWhiteSpace(id)||string.IsNullOrWhiteSpace(title)||string.IsNullOrWhiteSpace(description))throw new ArgumentException("У вида уведомления должны быть код, название и описание для настроек.");
    if(Notifications.registry.Any(k=>k.Id==id))throw new ArgumentException("Вид уведомления «"+id+"» уже есть.");
-   Id=id;Title=title;Description=description;DefaultOn=defaultOn;Notifications.registry.Add(this);
+   Id=id;Title=title;Description=description;DefaultOn=defaultOn;ToPhone=toPhone;Notifications.registry.Add(this);
   }
  }
  public static class Notifications {
@@ -21,9 +21,9 @@ namespace Ritm {
   public static readonly NotificationKind Meeting=new NotificationKind("meetings.reminder","Уведомления о встречах","За 10 минут до начала встречи и в момент её начала.");
   public static readonly NotificationKind NewTask=new NotificationKind("tasks.new","Новые задачи в общих проектах","Другой участник добавил задачу в общий проект.");
   public static readonly NotificationKind Assigned=new NotificationKind("tasks.assigned","Задача назначена на вас","Вас сделали исполнителем задачи в общем проекте.");
-  public static readonly NotificationKind MainUpdated=new NotificationKind("git.main","Обновление main","На сервере origin появился новый коммит main, которого нет в локальной main.");
-  public static readonly NotificationKind FolderChanged=new NotificationKind("folder.changed","Изменения в папке","Новые и изменённые файлы в отслеживаемой папке.");
-  public static readonly NotificationKind BuildDone=new NotificationKind("build.done","Сборка Unity завершена","Сборка Unity на стенде закончилась.");
+  public static readonly NotificationKind MainUpdated=new NotificationKind("git.main","Обновление main","На сервере origin появился новый коммит main, которого нет в локальной main.",toPhone:true);
+  public static readonly NotificationKind FolderChanged=new NotificationKind("folder.changed","Изменения в папке","Новые и изменённые файлы в отслеживаемой папке.",toPhone:true);
+  public static readonly NotificationKind BuildDone=new NotificationKind("build.done","Сборка Unity завершена","Сборка Unity на стенде закончилась.",toPhone:true);
   public static ReadOnlyCollection<NotificationKind> All {get{return registry.AsReadOnly();}}
   public static bool Enabled(Preferences p){return !p.NotificationsMuted;}
   // Выбор хранится только для видов, которые пользователь переключал; для остальных действует значение по умолчанию.
@@ -35,7 +35,10 @@ namespace Ritm {
  public sealed class Notifier:IDisposable {
   readonly Window window;readonly Preferences settings;readonly Action<string,Action> inApp;System.Windows.Forms.NotifyIcon tray;Action pending;
   public Notifier(Window owner,Preferences prefs,Action<string,Action> showInApp){window=owner;settings=prefs;inApp=showInApp;}
+  // Такие события видит только компьютер: телефон получает их через Google Диск, а показ решают его настройки.
+  public Action<PhoneNotice> Phone;
   public bool Show(NotificationKind kind,string title,string text,Action open=null){
+   if(kind!=null&&kind.ToPhone&&Phone!=null)Phone(new PhoneNotice{id=Guid.NewGuid().ToString(),kind=kind.Id,title=title,text=text,createdUtc=DateTime.UtcNow.ToString("o",System.Globalization.CultureInfo.InvariantCulture)});
    if(kind==null||!Notifications.IsOn(settings,kind))return false;
    if(settings.NotificationsInAppOnly||window.IsActive&&window.WindowState!=WindowState.Minimized){inApp(title+" · "+text,open);return true;}
    try{var icon=Tray();pending=open;icon.ShowBalloonTip(8000,title,text,System.Windows.Forms.ToolTipIcon.None);}catch{inApp(title+" · "+text,open);}
