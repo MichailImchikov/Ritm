@@ -69,9 +69,12 @@ namespace Ritm {
    foreach(var file in Directory.GetFiles(dir,"*.json")){try{var m=Json.Read<TeamMember>(File.ReadAllText(file,Encoding.UTF8));var n=m==null?null:TaskItem.Person(m.name);if(n!=null)list.Add(n);}catch{}}
    return list;
   }
+  static string MemberPath(TeamLink link,string user){
+   string key;using(var sha=SHA256.Create())key=BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(user.ToLower(CultureInfo.CurrentCulture)))).Replace("-","").Substring(0,16);
+   return Path.Combine(link.Path,"members",key+".json");
+  }
   static void WriteMember(TeamLink link){
-   string key;using(var sha=SHA256.Create())key=BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(link.User.ToLower(CultureInfo.CurrentCulture)))).Replace("-","").Substring(0,16);
-   Atomic(Path.Combine(link.Path,"members",key+".json"),Json.Write(new TeamMember{name=link.User,lastSeenUtc=DateTime.UtcNow.ToString("o",CultureInfo.InvariantCulture)}));
+   Atomic(MemberPath(link,link.User),Json.Write(new TeamMember{name=link.User,lastSeenUtc=DateTime.UtcNow.ToString("o",CultureInfo.InvariantCulture)}));
   }
   public TeamLink ConnectTeam(string path,string projectName,string user){
    user=TaskItem.Person(user,"Ваше имя");if(user==null)throw new Exception("Введите своё имя — так вас увидят остальные участники.");
@@ -93,7 +96,20 @@ namespace Ritm {
   public void SetTeamUser(string project,string user){
    var link=Team(project);if(link==null)throw new Exception("Общий проект не найден.");
    user=TaskItem.Person(user,"Ваше имя");if(user==null)throw new Exception("Введите своё имя.");
-   link.User=user;Settings.UserName=user;SavePreferences();try{WriteMember(link);}catch{}
+   string old=link.User;
+   if(!SamePerson(old,user)){
+    // Сначала получаем последние версии задач; при недоступной сети смену можно повторить.
+    SyncTeam(link);
+    foreach(var task in AllRecords.Where(t=>!t.deleted&&t.category==project&&(SamePerson(t.assignee,old)||SamePerson(t.createdBy,old))).ToList()){
+     if(SamePerson(task.assignee,old))task.assignee=user;
+     if(SamePerson(task.createdBy,old))task.createdBy=user;
+     Save(task,task.version);
+    }
+    SyncTeam(link);
+    var replacement=new TeamLink{Path=link.Path,User=user};WriteMember(replacement);
+    File.Delete(MemberPath(link,old));
+   }else WriteMember(new TeamLink{Path=link.Path,User=user});
+   link.User=user;Settings.UserName=user;SavePreferences();roster[project]=ReadMembers(link.Path);
   }
   // Отключение убирает проект только с этого компьютера: задачи в общей папке остаются.
   public void DisconnectTeam(string project){
