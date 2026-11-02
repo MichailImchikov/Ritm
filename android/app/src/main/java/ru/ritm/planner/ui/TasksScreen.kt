@@ -69,7 +69,7 @@ fun TasksScreen(
     var projectMenu by remember { mutableStateOf<String?>(null) }
 
     val q = query.trim().lowercase()
-    val tasks = records.filter { !it.deleted && !it.isProject }
+    val tasks = records.filter { it.isTask && !vm.store.isTeam(it.category) }
         .filter { project == ALL || it.category == project }
         .filter { q.isEmpty() || (it.title + " " + (it.description ?: "") + " " + it.category).lowercase().contains(q) }
     val pager = rememberPagerState { 3 }
@@ -195,7 +195,7 @@ private fun ProjectChips(
     onSelect: (String) -> Unit,
     onCreate: () -> Unit,
 ) {
-    fun open(name: String) = records.count { !it.deleted && !it.isProject && !it.completed && (name == ALL || it.category == name) }
+    fun open(name: String) = records.count { it.isTask && !it.completed && (if (name == ALL) it.category == NO_PROJECT || it.category in projects else it.category == name) }
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item { FilterChip(selected == ALL, { onSelect(ALL) }, { Text("Все · ${open(ALL)}") }) }
         items(projects) { p ->

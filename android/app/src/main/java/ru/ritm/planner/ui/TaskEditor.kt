@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -67,6 +68,7 @@ fun TaskEditor(
     onDismiss: () -> Unit,
     onSave: (TaskItem) -> Boolean,
     onDelete: (TaskItem) -> Unit,
+    members: List<String>? = null,
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var title by remember { mutableStateOf(original.title) }
@@ -80,11 +82,13 @@ fun TaskEditor(
     var picking by remember { mutableStateOf(false) }
     var projectMenu by remember { mutableStateOf(false) }
     var newProject by remember { mutableStateOf<String?>(null) }
+    var assignee by remember { mutableStateOf(original.assignee) }
+    var assigneeMenu by remember { mutableStateOf(false) }
     val isNew = original.version == 0
 
     fun build() = original.copy(
         title = title, description = description, category = project.ifBlank { NO_PROJECT },
-        date = date?.toString(), priority = priority, status = status, completed = status == "done", subtasks = steps.toList(),
+        date = date?.toString(), priority = priority, status = status, completed = status == "done", subtasks = steps.toList(), assignee = assignee,
     )
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
@@ -108,7 +112,21 @@ fun TaskEditor(
                 )
                 Spacer(Modifier.height(16.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    androidx.compose.foundation.layout.Box {
+                    if (members != null) androidx.compose.foundation.layout.Box {
+                        AssistChip(
+                            onClick = { assigneeMenu = true },
+                            label = { Text(assignee ?: "Без исполнителя") },
+                            leadingIcon = { Icon(Icons.Default.Person, null) },
+                        )
+                        DropdownMenu(assigneeMenu, { assigneeMenu = false }) {
+                            DropdownMenuItem({ Text("Без исполнителя") }, { assignee = null; assigneeMenu = false })
+                            members.forEach { m -> DropdownMenuItem({ Text(m) }, { assignee = m; assigneeMenu = false }) }
+                        }
+                    }
+                    if (members != null) AssistChip(
+                        onClick = {}, enabled = false, label = { Text(project) },
+                        leadingIcon = { Icon(Icons.Default.Folder, null, tint = Ritm.project(project)) },
+                    ) else androidx.compose.foundation.layout.Box {
                         AssistChip(
                             onClick = { projectMenu = true },
                             label = { Text(if (project == NO_PROJECT) "Без проекта" else project) },
@@ -174,6 +192,12 @@ fun TaskEditor(
                     )
                     Spacer(Modifier.width(8.dp))
                     IconButton(addStep) { Icon(Icons.Default.Add, "Добавить подзадачу") }
+                }
+                if (original.attachments.orEmpty().isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text("Вложения", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    original.attachments.orEmpty().forEach { Text(it.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp)) }
+                    Text("Открываются на компьютере.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                 }
                 Spacer(Modifier.height(40.dp))
             }

@@ -157,9 +157,10 @@ fun TaskCard(
                     Text(task.description, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 val steps = task.steps
-                if (task.date != null || task.priority <= 2 || steps.isNotEmpty() || task.status == "doing") {
+                if (task.date != null || task.priority <= 2 || steps.isNotEmpty() || task.status == "doing" || task.assignee != null) {
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        task.assignee?.let { Chip(it.substringBefore(' '), colors.tertiary) }
                         task.localDate?.let { d ->
                             val overdue = !task.completed && d < today
                             val color = when { overdue -> Ritm.Urgent; d == today -> colors.primary; else -> colors.onSurfaceVariant }

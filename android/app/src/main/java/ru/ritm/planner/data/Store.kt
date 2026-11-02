@@ -34,10 +34,82 @@ class Store(val root: File, private val clock: () -> Instant = Instant::now) {
     }
 
     val settings get() = _prefs.value
-    val tasks get() = items.values.filter { !it.deleted && !it.isProject }
+    val tasks get() = items.values.filter { it.isTask }
     val projectNames: List<String>
-        get() = items.values.filter { !it.deleted }.map { if (it.isProject) it.title else it.category }
+        get() = (items.values.filter { !it.deleted }.map { if (it.isProject) it.title else it.category } + settings.teams.map { it.name })
             .filter { it != NO_PROJECT }.distinct().sortedWith(String.CASE_INSENSITIVE_ORDER)
+
+    // Общие проекты — правила как в Team.cs.
+    val teams get() = settings.teams
+    fun team(name: String?) = teams.firstOrNull { it.name == name }
+    fun isTeam(name: String?) = team(name) != null
+    val personalProjects get() = projectNames.filter { !isTeam(it) }
+    val meetings get() = items.values.filter { !it.deleted && it.isMeeting && isTeam(it.category) }
+
+    /** Личные задачи всегда «мои»; задачи общего проекта — если исполнитель совпадает с моим именем в этом проекте. */
+    fun isMine(t: TaskItem): Boolean = team(t.category).let { it == null || TeamNames.same(t.assignee, it.user) }
+
+    /** Записи для синхронизации: личные и общие идут на Google Диск отдельными потоками. */
+    val personalRecords get() = items.values.filter { !isTeam(it.category) }
+    fun teamRecords(project: String) = items.values.filter { it.category == project }
+
+    fun members(project: String): List<String> {
+        val link = team(project) ?: return emptyList()
+        val names = listOf(link.user) + link.members + items.values.filter { !it.deleted && it.category == project }.flatMap { listOf(it.assignee, it.createdBy) }.filterNotNull()
+        val unique = mutableListOf<String>()
+        names.filter { it.isNotBlank() }.forEach { n -> if (unique.none { TeamNames.same(it, n) }) unique += n }
+        return unique.sortedWith(String.CASE_INSENSITIVE_ORDER)
+    }
+
+    fun updateTeam(name: String, change: (TeamLink) -> TeamLink) = updatePrefs { p -> p.copy(teams = p.teams.map { if (it.name == name) change(it) else it }) }
+
+    fun addTeam(link: TeamLink) {
+        if (teams.any { it.path.equals(link.path, ignoreCase = true) }) throw RitmException("Эта папка уже подключена.")
+        if (projectNames.any { it.equals(link.name, ignoreCase = true) }) throw RitmException("У вас уже есть проект «${link.name}».")
+        updatePrefs { it.copy(teams = it.teams + link) }
+    }
+
+    /** Отключение убирает проект только с телефона: задачи на сервере остаются. */
+    @Synchronized
+    fun removeTeam(name: String) {
+        items.values.filter { it.category == name }.toList().forEach { File(local, it.id + ".json").delete(); items.remove(it.id) }
+        updatePrefs { p -> p.copy(teams = p.teams.filter { it.name != name }, taskLayouts = p.taskLayouts - "project:$name") }
+        publish(false)
+    }
+
+    /** Список проектов от компьютера. Проекты, подключённые на телефоне вручную, он не трогает. */
+    fun applyTeams(snapshot: PhoneTeams) {
+        val incoming = snapshot.teams.filter { it.name.isNotBlank() && it.user.isNotBlank() }
+        teams.filter { !it.manual && incoming.none { n -> n.name == it.name } }.forEach { removeTeam(it.name) }
+        updatePrefs { p ->
+            val known = p.teams.map { t ->
+                val fresh = incoming.firstOrNull { it.name == t.name } ?: return@map t
+                t.copy(path = fresh.path, user = fresh.user, members = fresh.members.orEmpty(), manual = false)
+            }
+            p.copy(teams = known + incoming.filter { n -> known.none { it.name == n.name } }.map { TeamLink(it.path, it.name, it.user, members = it.members.orEmpty()) })
+        }
+    }
+
+    /** Слияние записей проекта; в ответе — что нового пришло от других участников. Первая синхронизация проекта молчит. */
+    @Synchronized
+    fun mergeTeam(link: TeamLink, incoming: List<TaskItem>): List<TeamChange> {
+        val changes = mutableListOf<TeamChange>()
+        val latest = incoming.map { it.validated() }.filter { it.category == link.name && it.version >= 1 && !it.deviceId.isNullOrEmpty() && parse(it.updatedUtc) != null }
+            .groupBy { it.id }.values.map { list -> list.maxWith(::compare) }
+        for (t in latest) {
+            val old = items[t.id]
+            if (old != null && compare(t, old) <= 0) continue
+            if (old != null) archive(old)
+            atomic(File(local, t.id + ".json"), RitmJson.encodeToString(TaskItem.serializer(), t))
+            items[t.id] = t
+            if (t.deleted || t.isMeeting || t.isProject || t.deviceId == settings.deviceId) continue
+            val added = old == null && !TeamNames.same(t.createdBy, link.user)
+            val assigned = !t.completed && TeamNames.same(t.assignee, link.user) && (old == null || !TeamNames.same(old.assignee, link.user))
+            if (added || assigned) changes += TeamChange(t, link.name, added, assigned)
+        }
+        if (latest.isNotEmpty()) publish(false)
+        return if (link.synced) changes else emptyList()
+    }
 
     fun find(id: String) = items[id]?.takeIf { !it.deleted }
 
@@ -64,8 +136,11 @@ class Store(val root: File, private val clock: () -> Instant = Instant::now) {
         if (current != null) {
             if (current.version != value.version || current.deleted)
                 throw RitmException("Задача изменилась на другом устройстве. Откройте свежую версию задачи.")
+            if (current.category != checked.category && isTeam(current.category))
+                throw RitmException("Задачу общего проекта нельзя перенести в другой проект — её видят остальные участники.")
         } else if (value.version != 0) throw RitmException("Исходная задача не найдена.")
         val saved = checked.copy(
+            createdBy = checked.createdBy ?: if (current == null && !checked.isProject) team(checked.category)?.user else null,
             version = value.version + 1,
             updatedUtc = clock().toString(),
             deviceId = settings.deviceId,
@@ -90,6 +165,7 @@ class Store(val root: File, private val clock: () -> Instant = Instant::now) {
     fun renameProject(old: String, new: String) {
         val n = new.trim()
         if (old == n) return
+        if (isTeam(old)) throw RitmException("Общий проект нельзя переименовать: его название видят все участники.")
         if (n.isEmpty() || n.length > 50 || n == NO_PROJECT || projectNames.any { it.equals(n, ignoreCase = true) })
             throw RitmException("Выберите другое название проекта (до 50 символов).")
         items.values.filter { !it.deleted && it.category == old }.toList().forEach {
@@ -101,6 +177,7 @@ class Store(val root: File, private val clock: () -> Instant = Instant::now) {
     }
 
     fun deleteProject(name: String) {
+        if (isTeam(name)) throw RitmException("Общий проект нельзя удалить с телефона.")
         items.values.filter { !it.deleted && it.category == name }.toList().forEach {
             if (it.isProject) delete(it) else save(it.copy(category = NO_PROJECT))
         }
@@ -136,7 +213,7 @@ class Store(val root: File, private val clock: () -> Instant = Instant::now) {
         if (text.length > 10_000_000) throw RitmException("Размер резервной копии не должен превышать 10 МБ.")
         val backup = runCatching { RitmJson.decodeFromString(BackupDocument.serializer(), text) }.getOrNull()
             ?: throw RitmException("Некорректная резервная копия.")
-        val list = backup.tasks + backup.projects.orEmpty()
+        val list = (backup.tasks + backup.projects.orEmpty()).filter { !it.isMeeting }
         if (list.size > 10000) throw RitmException("В копии слишком много записей.")
         val prepared = list.map { it.copy(id = newId(), version = 0, createdAt = 0, deleted = false).validated() }
         prepared.forEach { save(it) }

@@ -123,7 +123,7 @@ fun MyDayScreen(
 ) {
     val today = LocalDate.now()
     val todayKey = today.toString()
-    val tasks = records.filter { !it.deleted && !it.isProject }
+    val tasks = records.filter { it.isTask }
     val overdue = tasks.filter { !it.completed && it.date != null && it.date < todayKey }.sortedWith(compareBy({ it.date }, { it.priority }))
     val dueToday = tasks.filter { !it.completed && it.date == todayKey }.sortedWith(compareBy({ it.status != "doing" }, { it.priority }, { it.createdAt }))
     val doneToday = tasks.filter { it.completed && (it.date == todayKey || completedOn(it) == today) }

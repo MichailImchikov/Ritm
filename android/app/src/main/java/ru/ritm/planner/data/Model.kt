@@ -17,6 +17,16 @@ fun newId(): String = UUID.randomUUID().toString()
 data class Step(val id: String? = null, val title: String = "", val done: Boolean = false)
 
 @Serializable
+data class Attachment(
+    val id: String = "",
+    val name: String = "",
+    val file: String = "",
+    val size: Long = 0,
+    val addedUtc: String? = null,
+    val addedBy: String? = null,
+)
+
+@Serializable
 data class TaskItem(
     val id: String = newId(),
     val title: String = "",
@@ -33,8 +43,19 @@ data class TaskItem(
     val deleted: Boolean = false,
     val status: String? = "todo",
     val recordType: String? = "task",
+    val isMeeting: Boolean = false,
+    val meetingHue: Int? = null,
+    val meetingTransparency: Int? = null,
+    val meetingColor: String? = null,
+    val meetingTime: String? = null,
+    val meetingDays: List<Int>? = null,
+    val assignee: String? = null,
+    val createdBy: String? = null,
+    val attachments: List<Attachment>? = emptyList(),
 ) {
     val isProject get() = recordType == "project"
+    /** Обычная задача: не проект, не встреча и не удалена. */
+    val isTask get() = !deleted && !isProject && !isMeeting
     val steps get() = subtasks.orEmpty()
     val localDate: LocalDate? get() = date?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 
@@ -48,6 +69,14 @@ data class TaskItem(
         if (date != null) {
             val d = runCatching { LocalDate.parse(date, DateTimeFormatter.ISO_LOCAL_DATE) }.getOrNull()
             if (d == null || d.year < 1900 || date.length != 10) throw RitmException("Проверьте дату задачи.")
+        }
+        if (isMeeting) {
+            if (meetingHue != null && meetingHue !in 0..360 || meetingTransparency != null && meetingTransparency !in 0..100)
+                throw RitmException("Проверьте цвет и прозрачность встречи.")
+            if (date == null || runCatching { java.time.LocalTime.parse(meetingTime ?: "") }.isFailure)
+                throw RitmException("Укажите дату и время встречи (чч:мм).")
+            val days = meetingDays.orEmpty()
+            if (days.size > 7 || days.any { it !in 0..6 } || days.distinct().size != days.size) throw RitmException("Проверьте дни встреч.")
         }
         if (priority !in 1..4) throw RitmException("Некорректный приоритет.")
         val type = if (recordType.isNullOrEmpty()) "task" else recordType
@@ -64,6 +93,7 @@ data class TaskItem(
         return copy(
             title = title.trim(), category = category.trim(), description = text, recordType = type, status = st,
             subtasks = list.map { if (it.id.isNullOrEmpty()) it.copy(id = newId()) else it },
+            assignee = TeamNames.person(assignee), createdBy = TeamNames.person(createdBy), attachments = attachments.orEmpty(),
         )
     }
 }
@@ -91,6 +121,13 @@ data class Preferences(
     val syncStatus: String? = null,
     val digestEnabled: Boolean = true,
     val digestMinutes: Int = 9 * 60,
+    val teams: List<TeamLink> = emptyList(),
+    val serverLogin: String = "",
+    val serverDomain: String = "",
+    val notificationsMuted: Boolean = false,
+    val notifications: Map<String, Boolean> = emptyMap(),
+    val meetingNotified: Map<String, String> = emptyMap(),
+    val noticesSeen: List<String> = emptyList(),
 )
 
 @Serializable

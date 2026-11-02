@@ -66,7 +66,7 @@ fun CalendarScreen(records: List<TaskItem>, actions: TaskActions, onQuickAdd: (L
     var selectedKey by rememberSaveable { mutableStateOf(today.toString()) }
     var week by rememberSaveable { mutableStateOf(false) }
     val selected = LocalDate.parse(selectedKey)
-    val tasks = records.filter { !it.deleted && !it.isProject && it.date != null }
+    val tasks = records.filter { it.isTask && it.date != null }
     val byDay = tasks.groupBy { it.date!! }
     val month = YearMonth.from(selected)
     val title = if (week) {
