@@ -139,13 +139,14 @@ class Store(val root: File, private val clock: () -> Instant = Instant::now) {
             if (current.category != checked.category && isTeam(current.category))
                 throw RitmException("Задачу общего проекта нельзя перенести в другой проект — её видят остальные участники.")
         } else if (value.version != 0) throw RitmException("Исходная задача не найдена.")
-        val saved = checked.copy(
+        val stamp = clock().toString()
+        val saved = recordHistory(current, checked.copy(
             createdBy = checked.createdBy ?: if (current == null && !checked.isProject) team(checked.category)?.user else null,
             version = value.version + 1,
-            updatedUtc = clock().toString(),
+            updatedUtc = stamp,
             deviceId = settings.deviceId,
             createdAt = if (checked.createdAt == 0L) clock().toEpochMilli() else checked.createdAt,
-        )
+        ), team(checked.category)?.user, stamp)
         if (current != null) archive(current)
         atomic(File(local, saved.id + ".json"), RitmJson.encodeToString(TaskItem.serializer(), saved))
         items[saved.id] = saved

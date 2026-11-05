@@ -26,6 +26,17 @@ data class Attachment(
     val addedBy: String? = null,
 )
 
+/** Событие истории задачи — формат совпадает с TaskEvent в десктопном Model.cs. */
+@Serializable
+data class TaskEvent(
+    val id: String = newId(),
+    val at: String = "",
+    val by: String? = null,
+    val kind: String = "",
+    val from: String? = null,
+    val to: String? = null,
+)
+
 @Serializable
 data class TaskItem(
     val id: String = newId(),
@@ -52,6 +63,8 @@ data class TaskItem(
     val assignee: String? = null,
     val createdBy: String? = null,
     val attachments: List<Attachment>? = emptyList(),
+    val completedUtc: String? = null,
+    val history: List<TaskEvent>? = emptyList(),
 ) {
     val isProject get() = recordType == "project"
     /** Обычная задача: не проект, не встреча и не удалена. */
@@ -94,8 +107,48 @@ data class TaskItem(
             title = title.trim(), category = category.trim(), description = text, recordType = type, status = st,
             subtasks = list.map { if (it.id.isNullOrEmpty()) it.copy(id = newId()) else it },
             assignee = TeamNames.person(assignee), createdBy = TeamNames.person(createdBy), attachments = attachments.orEmpty(),
+            completedUtc = if (st == "done") completedUtc else null,
+            history = history.orEmpty().filter { it.kind.isNotEmpty() && it.at.isNotEmpty() }.let { h ->
+                if (h.size > HISTORY_LIMIT) h.take(1) + h.takeLast(HISTORY_LIMIT - 1) else h
+            },
         )
     }
+}
+
+const val HISTORY_LIMIT = 300
+
+/** Дописывает в after события об отличиях от before (null — новая задача) и время выполнения; та же логика, что TaskHistory.Record на компьютере. */
+fun recordHistory(before: TaskItem?, after: TaskItem, by: String?, at: String): TaskItem {
+    if (after.recordType != "task") return after
+    val events = after.history.orEmpty().toMutableList()
+    fun add(kind: String, from: String? = null, to: String? = null) { events += TaskEvent(at = at, by = by, kind = kind, from = from, to = to) }
+    val completedUtc = when {
+        after.status != "done" -> null
+        before == null || before.status != "done" -> at
+        else -> after.completedUtc ?: before.completedUtc ?: before.updatedUtc
+    }
+    if (before == null) {
+        add("created", to = after.status)
+        if (after.status != "todo") add("status", "todo", after.status)
+        if (after.assignee != null) add("assignee", to = after.assignee)
+    } else if (after.deleted && !before.deleted) {
+        add("deleted")
+    } else {
+        val priorities = listOf("Срочный", "Высокий", "Обычный", "Низкий")
+        fun pr(p: Int) = priorities.getOrNull(p - 1) ?: p.toString()
+        fun steps(t: TaskItem) = "${t.steps.count { it.done }}/${t.steps.size}"
+        if (before.status != after.status) add("status", before.status, after.status)
+        if (before.assignee != after.assignee && !TeamNames.same(before.assignee, after.assignee)) add("assignee", before.assignee, after.assignee)
+        if (before.category != after.category) add("project", before.category, after.category)
+        if (before.date != after.date) add("date", before.date, after.date)
+        if (before.priority != after.priority) add("priority", pr(before.priority), pr(after.priority))
+        if (before.title != after.title) add("title", before.title, after.title)
+        if ((before.description ?: "") != (after.description ?: "")) add("description")
+        if (steps(before) != steps(after)) add("steps", steps(before), steps(after))
+        val a0 = before.attachments.orEmpty().size; val a1 = after.attachments.orEmpty().size
+        if (a0 != a1) add("attachments", a0.toString(), a1.toString())
+    }
+    return after.copy(completedUtc = completedUtc, history = events)
 }
 
 @Serializable

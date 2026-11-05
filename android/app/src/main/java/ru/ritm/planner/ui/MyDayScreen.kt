@@ -158,7 +158,7 @@ private fun LazyListScope.section(title: String, list: List<TaskItem>, color: an
 }
 
 fun completedOn(t: TaskItem): LocalDate? =
-    if (!t.completed) null else Store.parse(t.updatedUtc)?.atZone(ZoneId.systemDefault())?.toLocalDate()
+    if (!t.completed) null else Store.parse(t.completedUtc ?: t.updatedUtc)?.atZone(ZoneId.systemDefault())?.toLocalDate()
 
 @Composable
 private fun DayProgress(done: Int, total: Int, tasks: List<TaskItem>) {

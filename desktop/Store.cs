@@ -52,9 +52,12 @@ namespace Ritm {
     if(current.category!=value.category&&IsTeamName(current.category))throw new Exception("Задачу общего проекта нельзя перенести в другой проект — её видят остальные участники. Создайте копию.");
    }else if(expectedVersion!=0)throw new Exception("Исходная задача не найдена.");
    var saved=value.Clone();if(current==null&&saved.createdBy==null&&saved.recordType=="task")saved.createdBy=Me(saved.category);saved.version=expectedVersion+1;saved.updatedUtc=DateTime.UtcNow.ToString("o",CultureInfo.InvariantCulture);saved.deviceId=Settings.DeviceId;
+   TaskHistory.Record(current,saved,Author(saved.category),saved.updatedUtc);
    if(saved.createdAt==0)saved.createdAt=(long)(DateTime.UtcNow-new DateTime(1970,1,1)).TotalMilliseconds;
    var path=Path.Combine(Local,saved.id+".json");if(current!=null)Archive(current,"history");Atomic(path,Json.Write(saved));items[saved.id]=saved;Place(saved);Sync();return saved.Clone();
   }
+  // Кто вносит изменение: имя в общем проекте, иначе имя из настроек или учётной записи Windows.
+  public string Author(string project){return Me(project)??Settings.UserName??WindowsName();}
   public void Delete(TaskItem value){var tombstone=value.Clone();tombstone.deleted=true;Save(tombstone,value.version);}
   void LoadLocal(){
    foreach(var file in Directory.GetFiles(Local,"*.json")){
