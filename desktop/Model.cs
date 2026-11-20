@@ -5,15 +5,16 @@ using System.Linq;
 using System.Web.Script.Serialization;
 
 namespace Ritm {
- public class Step { public string id {get;set;} public string title {get;set;} public bool done {get;set;} }
+ public class Step { public string id {get;set;} public string title {get;set;} public bool done {get;set;} public object Copy(){return MemberwiseClone();} }
  // Вложение: name — как показывать, file — имя файла в папке attachments (личные — в локальном хранилище, общие — в папке проекта).
  public class Attachment { public string id {get;set;} public string name {get;set;} public string file {get;set;} public long size {get;set;} public string addedUtc {get;set;} public string addedBy {get;set;}
+  public object Copy(){return MemberwiseClone();}
   static readonly string[] pictures={".jpg",".jpeg",".png",".bmp",".gif",".tif",".tiff",".ico",".webp",".heic"};
   public bool IsImage {get{return pictures.Contains(Extension);}}
   public string Extension {get{int dot=(name??"").LastIndexOf('.');return dot<0?"":name.Substring(dot).ToLowerInvariant();}}
  }
  // Событие истории задачи: kind — что изменилось (created, status, assignee, project, date, priority, title, description, steps, attachments, deleted), from/to — значения до и после.
- public class TaskEvent { public string id {get;set;} public string at {get;set;} public string by {get;set;} public string kind {get;set;} public string from {get;set;} public string to {get;set;} }
+ public class TaskEvent { public string id {get;set;} public string at {get;set;} public string by {get;set;} public string kind {get;set;} public string from {get;set;} public string to {get;set;} public object Copy(){return MemberwiseClone();} }
  public class TaskItem {
   public string id {get;set;} public string title {get;set;} public string description {get;set;}
   public bool isMeeting {get;set;} public int? meetingHue {get;set;} public int? meetingTransparency {get;set;} public string meetingColor {get;set;} public string meetingTime {get;set;} public List<int> meetingDays {get;set;} public string date {get;set;} public int priority {get;set;} public string category {get;set;}
@@ -27,7 +28,15 @@ namespace Ritm {
   public TaskItem() { id=Guid.NewGuid().ToString();title="";description="";category="Жизнь";priority=3;subtasks=new List<Step>();attachments=new List<Attachment>();history=new List<TaskEvent>(); }
   // Когда задача выполнена (по местному времени). У старых записей без completedUtc — время последнего изменения.
   public DateTime? CompletedLocal(){if(!completed)return null;DateTimeOffset when;var stamp=completedUtc??updatedUtc;return stamp!=null&&DateTimeOffset.TryParse(stamp,CultureInfo.InvariantCulture,DateTimeStyles.RoundtripKind,out when)?when.LocalDateTime:(DateTime?)null;}
-  public TaskItem Clone() {return Json.Read<TaskItem>(Json.Write(this));}
+  // Глубокая копия без JSON: store.Tasks копирует все задачи при каждой отрисовке, а сериализация с историей изменений занимала заметное время.
+  public TaskItem Clone() {
+   var c=(TaskItem)MemberwiseClone();
+   if(meetingDays!=null)c.meetingDays=new List<int>(meetingDays);
+   if(subtasks!=null)c.subtasks=subtasks.Select(s=>s==null?null:(Step)s.Copy()).ToList();
+   if(attachments!=null)c.attachments=attachments.Select(a=>a==null?null:(Attachment)a.Copy()).ToList();
+   if(history!=null)c.history=history.Select(e=>e==null?null:(TaskEvent)e.Copy()).ToList();
+   return c;
+  }
   public void Validate() {
    Guid g; DateTime d;
    if(!Guid.TryParse(id,out g)||id!=g.ToString())throw new Exception("Некорректный идентификатор задачи.");
@@ -118,7 +127,7 @@ namespace Ritm {
  public class BackupDocument {public string app {get;set;} public int version {get;set;} public List<TaskItem> tasks {get;set;} public List<TaskItem> projects {get;set;} }
  public static class Json {
   // Поля пишутся в алфавитном порядке. Порядок, который даёт JavaScriptSerializer, зависит от кэша рефлексии и меняется между запусками,
-  // а по тексту JSON считаются имена файлов на Google Диске и хэши истории — без стабильного порядка одна и та же запись выгружалась бы снова и снова.
+  // а по тексту JSON считаются хэши файлов истории — без стабильного порядка одна и та же версия задачи сохранялась бы повторно.
   public static string Write(object value){var s=new JavaScriptSerializer {MaxJsonLength=10000000};return s.Serialize(Canonical(s.DeserializeObject(s.Serialize(value))));}
   static object Canonical(object value){
    var map=value as IDictionary<string,object>;if(map!=null){var sorted=new Dictionary<string,object>();foreach(var key in map.Keys.OrderBy(k=>k,StringComparer.Ordinal))sorted[key]=Canonical(map[key]);return sorted;}
