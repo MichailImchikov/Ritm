@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Icon
@@ -47,11 +48,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.CommonStatusCodes
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ru.ritm.planner.data.NO_PROJECT
 import ru.ritm.planner.data.TaskItem
@@ -65,6 +69,7 @@ import ru.ritm.planner.ui.QuickAddSheet
 import ru.ritm.planner.ui.RitmTheme
 import ru.ritm.planner.ui.SettingsActions
 import ru.ritm.planner.ui.SettingsScreen
+import ru.ritm.planner.ui.SharedScreen
 import ru.ritm.planner.ui.TaskActions
 import ru.ritm.planner.ui.TaskEditor
 import ru.ritm.planner.ui.TasksScreen
@@ -78,6 +83,7 @@ class MainActivity : ComponentActivity() {
     private var tab by mutableStateOf("today")
     private var quick by mutableStateOf<QuickAdd?>(null)
     private var editing by mutableStateOf<TaskItem?>(null)
+    private var sharedProject by mutableStateOf<String?>(null)
 
     private val authLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode != RESULT_OK) { vm.driveError("Вход в Google отменён."); return@registerForActivityResult }
@@ -95,6 +101,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handle(intent)
+        // Пока приложение открыто, новости общих проектов приходят быстрее, чем с фоновой синхронизацией.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) { while (true) { delay(60_000); vm.syncNow() } }
+        }
         if (Build.VERSION.SDK_INT >= 33 && savedInstanceState == null) notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         setContent {
             val prefs by vm.prefs.collectAsStateWithLifecycle()
@@ -132,6 +142,7 @@ class MainActivity : ComponentActivity() {
             action == "quick" -> { tab = "today"; quick = QuickAdd("Новая задача на сегодня", date = LocalDate.now().toString()) }
             action == "focus" -> { tab = "today"; vm.focusStart() }
             action?.startsWith("task:") == true -> vm.store.find(action.removePrefix("task:"))?.let { editing = it }
+            action?.startsWith("project:") == true -> { tab = "shared"; sharedProject = action.removePrefix("project:") }
         }
     }
 
@@ -191,10 +202,11 @@ class MainActivity : ComponentActivity() {
                     listOf(
                         Triple("today", "Мой день", Icons.Default.WbSunny),
                         Triple("tasks", "Задачи", Icons.Default.Checklist),
+                        Triple("shared", "Общие", Icons.Default.Groups),
                         Triple("calendar", "Календарь", Icons.Default.CalendarMonth),
                         Triple("settings", "Настройки", Icons.Default.Settings),
                     ).forEach { (key, label, icon) ->
-                        NavigationBarItem(tab == key, { tab = key }, { Icon(icon, null) }, label = { Text(label) })
+                        NavigationBarItem(tab == key, { tab = key }, { Icon(icon, null) }, label = { Text(label, maxLines = 1) })
                     }
                 }
             },
@@ -204,13 +216,16 @@ class MainActivity : ComponentActivity() {
                 transitionSpec = { fadeIn(tween(if (still) 0 else 180)) togetherWith fadeOut(tween(if (still) 0 else 120)) }, label = "tab") { current ->
                 Box(Modifier.fillMaxSize()) {
                     when (current) {
-                        "today" -> MyDayScreen(records, prefs.focus, prefs.focusTaskId, vm, actions) {
+                        "today" -> MyDayScreen(records.filter(vm.store::isMine), prefs.focus, prefs.focusTaskId, vm, actions) {
                             quick = QuickAdd("Задача на сегодня", date = LocalDate.now().toString())
                         }
                         "tasks" -> TasksScreen(records, projects, vm, actions) { status, project ->
                             quick = QuickAdd(if (project == null || project == NO_PROJECT) "Новая задача" else "Задача в «$project»", status, project)
                         }
-                        "calendar" -> CalendarScreen(records, actions) { day ->
+                        "shared" -> SharedScreen(records, prefs, busy, sharedProject, { sharedProject = it }, vm, actions) { project, status ->
+                            quick = QuickAdd("Задача в «$project»", status, project)
+                        }
+                        "calendar" -> CalendarScreen(records.filter(vm.store::isMine), actions) { day ->
                             quick = QuickAdd("Задача на ${ru.ritm.planner.data.Dates.friendly(day.toString()).lowercase()}", date = day.toString())
                         }
                         else -> SettingsScreen(prefs, busy, vm, SettingsActions(
@@ -226,11 +241,11 @@ class MainActivity : ComponentActivity() {
         }
 
         quick?.let { q ->
-            QuickAddSheet(q.title, projects, { quick = null }) { text -> vm.quickAdd(text, q.status, q.project, q.date) }
+            QuickAddSheet(q.title, vm.store.projectNames, { quick = null }) { text -> vm.quickAdd(text, q.status, q.project, q.date) }
         }
         editing?.let { task ->
             val fresh = vm.store.find(task.id) ?: task
-            TaskEditor(fresh, projects, { editing = null }, vm::save, vm::delete)
+            TaskEditor(fresh, projects, { editing = null }, vm::save, vm::delete, if (vm.store.isTeam(fresh.category)) vm.members(fresh.category) else null)
         }
         picking?.let { task -> DatePick(task.localDate, { picking = null }) { vm.setDate(task, it) } }
     }

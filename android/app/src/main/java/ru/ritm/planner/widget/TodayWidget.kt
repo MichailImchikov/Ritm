@@ -56,16 +56,16 @@ class TodayWidget : GlanceAppWidget() {
         val store = (context.applicationContext as RitmApp).store
         provideContent {
             val records by store.records.collectAsState()
-            GlanceTheme { Content(context, records) }
+            GlanceTheme { Content(context, records, store::isMine) }
         }
     }
 
     @Composable
-    private fun Content(context: Context, records: List<TaskItem>) {
+    private fun Content(context: Context, records: List<TaskItem>, mine: (TaskItem) -> Boolean) {
         val today = LocalDate.now().toString()
-        val open = records.filter { !it.deleted && !it.isProject && !it.completed && it.date != null && it.date <= today }
+        val open = records.filter { it.isTask && mine(it) && !it.completed && it.date != null && it.date <= today }
             .sortedWith(compareBy<TaskItem>({ it.date == today }, { it.priority }, { it.createdAt }))
-        val doneToday = records.count { !it.deleted && !it.isProject && it.completed && it.date == today }
+        val doneToday = records.count { it.isTask && mine(it) && it.completed && it.date == today }
         Column(
             GlanceModifier.fillMaxSize().cornerRadius(24.dp).background(GlanceTheme.colors.widgetBackground).padding(14.dp),
         ) {

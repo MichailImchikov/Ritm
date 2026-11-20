@@ -21,8 +21,8 @@ android {
         applicationId = "ru.ritm.planner"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     signingConfigs {
@@ -54,6 +54,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
     testOptions { unitTests.isReturnDefaultValues = true }
+    packaging { resources.excludes += setOf("META-INF/versions/**", "META-INF/BC*", "META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA") }
 }
 
 dependencies {
@@ -77,6 +78,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
     implementation("com.google.android.gms:play-services-auth:21.3.0")
+    implementation("com.hierynomus:smbj:0.14.0")
 
     testImplementation("junit:junit:4.13.2")
 }

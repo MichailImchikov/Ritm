@@ -52,18 +52,6 @@ namespace Ritm {
   }
   // Файл, прикреплённый в форме, которую закрыли без сохранения, не нужен ни одной задаче.
   public void Discard(Attachment a){try{if(a!=null&&TaskItem.SafeFile(a.file))File.Delete(Path.Combine(LocalFiles,a.file));}catch{}}
-  // Отправляет локальные копии вложений задачи общего проекта на сервер. Если папка недоступна, файл остаётся локально до следующей синхронизации.
-  void Place(TaskItem t){
-   var team=Team(t.category);if(team==null||t.deleted||t.attachments==null)return;
-   foreach(var a in t.attachments){
-    if(!TaskItem.SafeFile(a.file))continue;var local=Path.Combine(LocalFiles,a.file);if(!File.Exists(local))continue;
-    try{
-     var dir=Path.Combine(team.Path,FilesFolder);Directory.CreateDirectory(dir);var remote=Path.Combine(dir,a.file);
-     if(!File.Exists(remote)){var temp=remote+"."+Guid.NewGuid().ToString("N")+".tmp";try{File.Copy(local,temp);File.Move(temp,remote);}finally{if(File.Exists(temp))File.Delete(temp);}}
-     File.Delete(local);
-    }catch{}
-   }
-  }
  }
  public static class Photo {
   // Загружает фото без блокировки файла и с поворотом по EXIF (снимки с телефона). maxWidth уменьшает только большие изображения.

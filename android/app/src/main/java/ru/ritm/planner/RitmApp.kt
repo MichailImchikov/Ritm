@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import ru.ritm.planner.data.FocusTimer
 import ru.ritm.planner.data.Store
 import ru.ritm.planner.notify.Notifications
+import ru.ritm.planner.sync.ServerPassword
 import ru.ritm.planner.sync.Sync
 import ru.ritm.planner.widget.TodayWidget
 import java.io.File
@@ -16,20 +17,24 @@ class RitmApp : Application() {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     lateinit var store: Store
         private set
+    val serverPassword by lazy { ServerPassword(this) }
 
     override fun onCreate() {
         super.onCreate()
         store = Store(File(filesDir, "data"))
         store.onChange = {
-            if (store.settings.driveConnected) Sync.soon(this)
+            if (syncEnabled) Sync.soon(this)
             refreshWidgets()
         }
         scope.launch { store.records.collect { refreshWidgets() } }
         Notifications.createChannels(this)
         Notifications.scheduleDigest(this)
-        Sync.schedulePeriodic(this, store.settings.driveConnected)
+        Sync.schedulePeriodic(this, syncEnabled)
+        Notifications.checkMeetings(this)
         completeFocusIfDue()
     }
+
+    val syncEnabled get() = store.settings.driveConnected || store.teams.isNotEmpty()
 
     fun refreshWidgets() {
         scope.launch { runCatching { TodayWidget.refresh(this@RitmApp) } }

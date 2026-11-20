@@ -38,7 +38,8 @@ namespace Ritm {
   readonly List<TeamChange> changes=new List<TeamChange>();
   void Track(TeamLink link,TaskItem before,TaskItem after){
    if(after.deleted||after.isMeeting||after.recordType!="task"||after.deviceId==Settings.DeviceId)return;
-   bool added=before==null,assigned=!after.completed&&SamePerson(after.assignee,link.User)&&(before==null||!SamePerson(before.assignee,link.User));
+   // Задача, созданная пользователем на телефоне, тоже приходит с другого устройства, но новой для него не является.
+   bool added=before==null&&!SamePerson(after.createdBy,link.User),assigned=!after.completed&&SamePerson(after.assignee,link.User)&&(before==null||!SamePerson(before.assignee,link.User));
    if(added||assigned)changes.Add(new TeamChange{Task=after.Clone(),Project=link.Name,Added=added,AssignedToMe=assigned});
   }
   public List<TeamChange> TakeChanges(){var list=changes.ToList();changes.Clear();return list;}
@@ -116,38 +117,8 @@ namespace Ritm {
    var link=Team(project);if(link==null)return;
    foreach(var t in items.Values.Where(t=>t.category==project).ToList()){var file=Path.Combine(Local,t.id+".json");if(File.Exists(file))File.Delete(file);items.Remove(t.id);}
    foreach(var key in seen.Keys.Where(k=>k.StartsWith(link.Path,StringComparison.OrdinalIgnoreCase)).ToList())seen.Remove(key);
-   roster.Remove(project);teamErrors.Remove(project);retryAt.Remove(project);
+   roster.Remove(project);teamErrors.Remove(project);retryAt.Remove(project);memberFiles.Remove(link.Path);
    Teams.Remove(link);if(Settings.TaskLayouts!=null)Settings.TaskLayouts.Remove("project:"+project);SavePreferences();
-  }
-  bool SyncTeams(){
-   bool changed=false;
-   foreach(var link in Teams.ToList()){
-    DateTime wait;if(retryAt.TryGetValue(link.Name,out wait)&&DateTime.UtcNow<wait)continue;
-    try{if(SyncTeam(link))changed=true;teamErrors.Remove(link.Name);retryAt.Remove(link.Name);}
-    // Недоступный сервер может отвечать секундами — повторяем не чаще раза в 30 секунд, чтобы окно не подвисало.
-    catch(Exception e){teamErrors[link.Name]=e.Message;retryAt[link.Name]=DateTime.UtcNow.AddSeconds(30);}
-   }
-   return changed;
-  }
-  bool SyncTeam(TeamLink link){
-   if(!Directory.Exists(link.Path))throw new IOException("Папка недоступна.");
-   string dir=Path.Combine(link.Path,"tasks");Directory.CreateDirectory(dir);bool changed=false;
-   var present=new HashSet<string>();
-   foreach(var file in Directory.GetFiles(dir,"*.json")){
-    present.Add(Path.GetFileNameWithoutExtension(file));
-    // Файлы перечитываются только после изменения — в сети это заметно быстрее.
-    DateTime stamp=File.GetLastWriteTimeUtc(file);Seen known;
-    if(!seen.TryGetValue(file,out known)||known.Stamp!=stamp){try{known=new Seen{Stamp=stamp,Item=ReadRecord(file)};seen[file]=known;}catch{continue;}}
-    TaskItem before;items.TryGetValue(known.Item.id,out before);
-    if(known.Item.category==link.Name&&Absorb(known.Item.Clone())){changed=true;Track(link,before,items[known.Item.id]);}
-   }
-   foreach(var t in items.Values.Where(t=>t.category==link.Name).ToList()){
-    Place(t);var path=Path.Combine(dir,t.id+".json");Seen remote;
-    if(present.Contains(t.id)&&(!seen.TryGetValue(path,out remote)||Compare(t,remote.Item)<=0))continue;
-    Atomic(path,Json.Write(t));seen[path]=new Seen{Stamp=File.GetLastWriteTimeUtc(path),Item=t.Clone()};
-   }
-   roster[link.Name]=ReadMembers(link.Path);
-   return changed;
   }
  }
 }

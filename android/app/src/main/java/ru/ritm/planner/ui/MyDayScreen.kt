@@ -123,7 +123,7 @@ fun MyDayScreen(
 ) {
     val today = LocalDate.now()
     val todayKey = today.toString()
-    val tasks = records.filter { !it.deleted && !it.isProject }
+    val tasks = records.filter { it.isTask }
     val overdue = tasks.filter { !it.completed && it.date != null && it.date < todayKey }.sortedWith(compareBy({ it.date }, { it.priority }))
     val dueToday = tasks.filter { !it.completed && it.date == todayKey }.sortedWith(compareBy({ it.status != "doing" }, { it.priority }, { it.createdAt }))
     val doneToday = tasks.filter { it.completed && (it.date == todayKey || completedOn(it) == today) }
@@ -158,7 +158,7 @@ private fun LazyListScope.section(title: String, list: List<TaskItem>, color: an
 }
 
 fun completedOn(t: TaskItem): LocalDate? =
-    if (!t.completed) null else Store.parse(t.updatedUtc)?.atZone(ZoneId.systemDefault())?.toLocalDate()
+    if (!t.completed) null else Store.parse(t.completedUtc ?: t.updatedUtc)?.atZone(ZoneId.systemDefault())?.toLocalDate()
 
 @Composable
 private fun DayProgress(done: Int, total: Int, tasks: List<TaskItem>) {

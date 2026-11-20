@@ -42,7 +42,7 @@ namespace Ritm {
    for(int i=0;i<7;i++){int day=(i+1)%7;var check=new CheckBox{Content=labels[i],Margin=new Thickness(0,0,12,0),IsChecked=value.meetingDays!=null&&value.meetingDays.Contains(day),Tag=day};checks.Add(check);days.Children.Add(check);}p.Children.Add(days);
    p.Children.Add(UI.Button("Сохранить",()=>{try{value.category=(string)projects.SelectedItem;value.title=name.Text;value.description=description.Text;value.date=date.SelectedDate.HasValue?UI.Date(date.SelectedDate.Value):null;value.meetingTime=time.Text.Trim();value.meetingTransparency=(int)transparency.Value;value.meetingDays=checks.Where(c=>c.IsChecked==true).Select(c=>(int)c.Tag).ToList();store.Save(value,value.version);w.DialogResult=true;}catch(Exception e){MessageBox.Show(w,e.Message,"Не удалось сохранить");}},true));
    if(value.version>0){UI.Gap(p,8);p.Children.Add(UI.Button("Удалить встречу целиком",()=>{if(MessageBox.Show(w,"Удалить встречу и все её повторения?","Удаление",MessageBoxButton.YesNo)==MessageBoxResult.Yes){try{store.Delete(value);w.DialogResult=true;}catch(Exception e){MessageBox.Show(w,e.Message,"Не удалось удалить");}}}));}
-   w.ShowDialog();Refresh();RunCloudSync();
+   w.ShowDialog();Refresh();SyncNow();
   }
  }
 }

@@ -12,6 +12,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.JsonPrimitive
+import ru.ritm.planner.data.PhoneNotice
+import ru.ritm.planner.data.PhoneTeams
 import ru.ritm.planner.data.RitmException
 import ru.ritm.planner.data.RitmJson
 import ru.ritm.planner.data.Store
@@ -27,6 +29,7 @@ class AuthExpired : Exception("Доступ Google истёк.")
  * Протокол облака как в GoogleDriveClient.cs: каждая версия записи — неизменяемый файл
  * ritm-v2-<id>-<sha256 содержимого>.json в скрытой папке приложения (appDataFolder).
  * Файлы видны десктопу, если OAuth-клиенты Android и Desktop созданы в одном проекте Google Cloud.
+ * Записи общих проектов — такие же файлы с префиксом ritm-team-v1-: их переносит на сервер компьютер.
  */
 class DriveClient(
     private val cacheDir: File,
@@ -40,21 +43,21 @@ class DriveClient(
         fun send(method: String, url: String, token: String, contentType: String?, body: ByteArray?): Pair<Int, ByteArray>
     }
 
-    suspend fun pull(): Pulled = withContext(Dispatchers.IO) {
+    suspend fun pull(prefix: String = PERSONAL): Pulled = withContext(Dispatchers.IO) {
         cacheDir.mkdirs()
         val result = mutableListOf<TaskItem>()
         val seen = mutableSetOf<String>()
         var page: String? = null
         do {
             val url = "$API/files?spaces=appDataFolder&pageSize=1000&fields=nextPageToken,files(id,name)&q=" +
-                enc("trashed = false and name contains 'ritm-v2-'") + (page?.let { "&pageToken=" + enc(it) } ?: "")
+                enc("trashed = false and name contains '$prefix'") + (page?.let { "&pageToken=" + enc(it) } ?: "")
             val listing = Json.parseToJsonElement(String(call("GET", url), Charsets.UTF_8)).jsonObject
             val files = listing["files"] as? JsonArray ?: throw RitmException("Не удалось прочитать список файлов Ритма.")
             for (f in files) {
                 val o = f.jsonObject
                 val id = o["id"]?.jsonPrimitive?.content ?: continue
                 val name = o["name"]?.jsonPrimitive?.content ?: continue
-                if (!name.startsWith("ritm-v2-") || !name.endsWith(".json")) continue
+                if (!name.startsWith(prefix) || !name.endsWith(".json")) continue
                 if (id.length > 200 || id.any { !it.isLetterOrDigit() && it != '_' && it != '-' })
                     throw RitmException("Некорректный идентификатор файла Google.")
                 val cached = File(cacheDir, "$id.json")
@@ -63,7 +66,7 @@ class DriveClient(
                 }
                 val item = runCatching { RitmJson.decodeFromString(TaskItem.serializer(), String(bytes, Charsets.UTF_8)).validated() }
                     .getOrElse { throw RitmException("Не удалось прочитать облачную задачу.") }
-                if (eventName(item.id, bytes) != name) throw RitmException("Облачный файл Ритма не прошёл проверку целостности.")
+                if (eventName(item.id, bytes, prefix) != name) throw RitmException("Облачный файл Ритма не прошёл проверку целостности.")
                 if (!cached.exists()) cached.writeBytes(bytes)
                 seen += name
                 result += item
@@ -74,13 +77,13 @@ class DriveClient(
     }
 
     /** Загружает версии, которых ещё нет в облаке. Возвращает число загруженных файлов. */
-    suspend fun push(items: List<TaskItem>, cloud: Pulled): Int = withContext(Dispatchers.IO) {
+    suspend fun push(items: List<TaskItem>, cloud: Pulled, prefix: String = PERSONAL): Int = withContext(Dispatchers.IO) {
         val present = cloud.items.map { key(it) }.toSet()
         var uploaded = 0
         for (item in items) {
             if (key(item) in present) continue
             val bytes = RitmJson.encodeToString(TaskItem.serializer(), item).toByteArray(Charsets.UTF_8)
-            val name = eventName(item.id, bytes)
+            val name = eventName(item.id, bytes, prefix)
             if (name in cloud.names) continue
             val meta = buildJsonObject {
                 put("name", name)
@@ -101,6 +104,33 @@ class DriveClient(
         uploaded
     }
 
+    /** Список общих проектов, который публикует компьютер; null — компьютер его ещё не выложил. */
+    suspend fun teams(): PhoneTeams? = withContext(Dispatchers.IO) {
+        val file = list("name = '$TEAMS'").firstOrNull { it.name == TEAMS } ?: return@withContext null
+        runCatching { RitmJson.decodeFromString(PhoneTeams.serializer(), String(call("GET", "$API/files/${enc(file.id)}?alt=media"), Charsets.UTF_8)) }.getOrNull()
+    }
+
+    /** События компьютера (git, папки, сборки), которых телефон ещё не видел, и имена всех лежащих на Диске. */
+    suspend fun notices(seen: Collection<String>): Pair<List<PhoneNotice>, List<String>> = withContext(Dispatchers.IO) {
+        val files = list("name contains '$NOTICE'").filter { it.name.startsWith(NOTICE) }
+        val fresh = files.filter { it.name !in seen }.mapNotNull { f ->
+            runCatching { RitmJson.decodeFromString(PhoneNotice.serializer(), String(call("GET", "$API/files/${enc(f.id)}?alt=media"), Charsets.UTF_8)) }.getOrNull()
+        }
+        fresh to files.map { it.name }
+    }
+
+    private class Listed(val id: String, val name: String)
+
+    private suspend fun list(filter: String): List<Listed> {
+        val url = "$API/files?spaces=appDataFolder&pageSize=1000&fields=files(id,name)&q=" + enc("trashed = false and $filter")
+        val files = Json.parseToJsonElement(String(call("GET", url), Charsets.UTF_8)).jsonObject["files"] as? JsonArray ?: return emptyList()
+        return files.mapNotNull { f ->
+            val o = f.jsonObject
+            val id = o["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            Listed(id, o["name"]?.jsonPrimitive?.content ?: return@mapNotNull null)
+        }
+    }
+
     private suspend fun call(method: String, url: String, type: String? = null, body: ByteArray? = null): ByteArray {
         val (code, bytes) = transport.send(method, url, token(), type, body)
         when {
@@ -114,11 +144,15 @@ class DriveClient(
 
     companion object {
         const val SCOPE = "https://www.googleapis.com/auth/drive.appdata"
+        const val PERSONAL = "ritm-v2-"
+        const val TEAM = "ritm-team-v1-"
+        const val TEAMS = "ritm-teams-v1.json"
+        const val NOTICE = "ritm-notice-v1-"
         private const val API = "https://www.googleapis.com/drive/v3"
         private const val UPLOAD = "https://www.googleapis.com/upload/drive/v3"
         private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
         private fun key(t: TaskItem) = listOf(t.id, t.version, t.updatedUtc, t.deviceId, t.deleted).joinToString("|")
-        fun eventName(id: String, bytes: ByteArray) = "ritm-v2-$id-${Store.sha256(bytes)}.json"
+        fun eventName(id: String, bytes: ByteArray, prefix: String = PERSONAL) = "$prefix$id-${Store.sha256(bytes)}.json"
     }
 }
 

@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import ru.ritm.planner.BuildConfig
+import ru.ritm.planner.data.NotificationKinds
 import ru.ritm.planner.data.Preferences
 
 class SettingsActions(
@@ -117,14 +118,20 @@ fun SettingsScreen(prefs: Preferences, busy: Boolean, vm: AppViewModel, actions:
                 }
             }
             item {
-                Group("Напоминания") {
+                Group("Уведомления") {
                     SwitchRow("План на день", "Каждое утро — задачи на сегодня и просроченные", prefs.digestEnabled) { vm.setDigest(it) }
                     if (prefs.digestEnabled) TextButton({ timeDialog = true }) {
                         Text("Время: %02d:%02d".format(prefs.digestMinutes / 60, prefs.digestMinutes % 60))
                     }
                     HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    SwitchRow("Уведомления Ритма", "Те же виды, что на компьютере", !prefs.notificationsMuted) { vm.setNotificationsMuted(!it) }
+                    if (!prefs.notificationsMuted) NotificationKinds.all.forEach { kind ->
+                        SwitchRow(kind.title, kind.description, NotificationKinds.choice(prefs, kind)) { vm.setNotification(kind, it) }
+                    }
+                    Hint("Новости проектов приходят с фоновой синхронизацией — раз в 15 минут, а при открытом приложении раз в минуту. Git, папки и сборки телефон узнаёт от компьютера через Google Диск.")
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
                     if (actions.exactAlarms != null) {
-                        Hint("Чтобы сигнал таймера фокуса звучал точно вовремя, разрешите «Будильники и напоминания».")
+                        Hint("Чтобы встречи и сигнал таймера фокуса приходили точно вовремя, разрешите «Будильники и напоминания».")
                         TextButton(actions.exactAlarms) { Text("Разрешить точные будильники") }
                     }
                     Hint("Samsung может усыплять приложения. Если уведомления опаздывают: Батарея → «Без ограничений».")

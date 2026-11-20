@@ -13,11 +13,17 @@ import ru.ritm.planner.RitmApp
 import ru.ritm.planner.data.FocusState
 import ru.ritm.planner.data.FocusTimer
 import ru.ritm.planner.data.NO_PROJECT
+import ru.ritm.planner.data.NotificationKind
+import ru.ritm.planner.data.RitmException
 import ru.ritm.planner.data.SmartInput
 import ru.ritm.planner.data.TaskItem
+import ru.ritm.planner.data.TeamLink
+import ru.ritm.planner.data.TeamNames
 import ru.ritm.planner.data.newId
 import ru.ritm.planner.notify.Notifications
+import ru.ritm.planner.sync.ServerAccess
 import ru.ritm.planner.sync.Sync
+import ru.ritm.planner.sync.TeamSync
 import java.time.LocalDate
 
 data class UiMessage(val text: String, val undo: (() -> Unit)? = null)
@@ -32,7 +38,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _messages = MutableSharedFlow<UiMessage>(extraBufferCapacity = 8)
     val messages: SharedFlow<UiMessage> = _messages
 
-    fun projects() = store.projectNames
+    fun projects() = store.personalProjects
+    fun members(project: String) = store.members(project)
 
     private fun say(text: String, undo: (() -> Unit)? = null) { _messages.tryEmit(UiMessage(text, undo)) }
 
@@ -142,13 +149,47 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun driveDisconnect() {
         store.updatePrefs { it.copy(driveConnected = false, syncStatus = null) }
-        Sync.schedulePeriodic(app, false)
+        Sync.schedulePeriodic(app, app.syncEnabled)
         say("Google Диск отключён. Задачи остались на телефоне.")
     }
 
     fun syncNow() {
-        if (!store.settings.driveConnected) return
+        if (!app.syncEnabled) return
         viewModelScope.launch { Sync.run(app) }
+    }
+
+    // Уведомления
+    fun setNotificationsMuted(muted: Boolean) { store.updatePrefs { it.copy(notificationsMuted = muted) }; Notifications.scheduleMeetings(app) }
+    fun setNotification(kind: NotificationKind, on: Boolean) { store.updatePrefs { it.copy(notifications = it.notifications + (kind.id to on)) }; Notifications.scheduleMeetings(app) }
+
+    // Общие проекты
+    fun saveServer(login: String, domain: String, password: String?) {
+        store.updatePrefs { it.copy(serverLogin = login.trim(), serverDomain = domain.trim()) }
+        if (password != null) app.serverPassword.save(password)
+        say("Доступ к серверу сохранён")
+        syncNow()
+    }
+
+    /** Подключение по адресу — если Google Диска нет и список проектов с компьютера не приходит. */
+    fun connectTeam(path: String, user: String) = viewModelScope.launch {
+        runCatching {
+            val name = TeamNames.person(user) ?: throw RitmException("Введите своё имя — так вас увидят остальные участники.")
+            val prefs = store.settings
+            val address = path.trim()
+            val manifest = withContext(Dispatchers.IO) {
+                ServerAccess.open(address, prefs.serverLogin, app.serverPassword.read(), prefs.serverDomain).use { TeamSync.manifest(it) }
+            } ?: throw RitmException("В этой папке нет общего проекта Ритма. Сначала подключите её на компьютере.")
+            store.addTeam(TeamLink(address, manifest.name.trim(), name, manual = true))
+            Sync.schedulePeriodic(app, true)
+            Sync.run(app)
+        }.onSuccess { say("Общий проект подключён") }.onFailure { say(it.message ?: "Не удалось подключиться к папке") }
+    }
+
+    fun disconnectTeam(project: String) {
+        store.team(project)?.let { TeamSync.forget(it.path) }
+        store.removeTeam(project)
+        Sync.schedulePeriodic(app, app.syncEnabled)
+        say("Проект отключён на телефоне. На сервере всё осталось.")
     }
 
     fun driveError(message: String) {

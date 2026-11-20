@@ -20,15 +20,16 @@ namespace Ritm {
     if(args[0].StartsWith("--render-team")){var server=Path.Combine(temp+"-server","Отдел продаж");Directory.CreateDirectory(server);data.ConnectTeam(server,"Отдел продаж","Анна");
      data.Save(new TaskItem{title="Подготовить КП для клиента",category="Отдел продаж",status="doing",priority=1,date=UI.Date(DateTime.Today),assignee="Анна"},0);data.Save(new TaskItem{title="Обзвонить новых лидов",category="Отдел продаж",status="todo",priority=2,assignee="Иван Петров"},0);
      data.Save(new TaskItem{title="Обновить прайс-лист",category="Отдел продаж",status="todo",priority=3},0);data.Save(new TaskItem{title="Отчёт за октябрь",category="Отдел продаж",status="done",completed=true,assignee="Мария"},0);}
-    var preview=new MainWindow(data);Window target=preview;if(args[0].StartsWith("--render-team"))preview.PreviewTaskLayout("board","Отдел продаж");if(args[0].StartsWith("--render-team-editor"))target=new TaskEditor(null,data.Tasks.Find(t=>t.category=="Отдел продаж"),data.ProjectNames,t=>true,t=>{},n=>data.IsTeamName(n)?data.Members(n):null);
+    var preview=new MainWindow(data);Window target=preview;if(args[0].StartsWith("--render-team"))preview.PreviewTaskLayout("board","Отдел продаж");if(args[0]=="--render-team-history"){var h=data.Tasks.Find(t=>t.category=="Отдел продаж");h.status="todo";h=data.Save(h,h.version);h.status="doing";h.date=UI.Date(DateTime.Today.AddDays(2));h=data.Save(h,h.version);h.completed=true;h=data.Save(h,h.version);}
+    if(args[0].StartsWith("--render-team-editor")||args[0]=="--render-team-history")target=new TaskEditor(null,data.Tasks.Find(t=>t.category=="Отдел продаж"),data.ProjectNames,t=>true,t=>{},n=>data.IsTeamName(n)?data.Members(n):null);
     if(args[0]=="--render-calendar")preview.PreviewView("calendar");if(args[0]=="--render-day")preview.PreviewView("today");
-    if(args[0]=="--render-project-list"){preview.PreviewView("calendar");preview.PreviewTaskLayout("list","Ритм");}if(args[0]=="--render-day-board"){preview.PreviewView("today");preview.PreviewTaskLayout("board");}if(args[0]=="--render-settings")target=new SettingsWindow(null,data,new GoogleDriveClient(temp),()=>{},()=>{});
+    if(args[0]=="--render-project-list"){preview.PreviewView("calendar");preview.PreviewTaskLayout("list","Ритм");}if(args[0]=="--render-day-board"){preview.PreviewView("today");preview.PreviewTaskLayout("board");}if(args[0]=="--render-settings")target=new SettingsWindow(null,data,()=>{},()=>{});
     if(args[0]=="--render-editor")target=new TaskEditor(null,data.Tasks[0],data.ProjectNames,t=>true,t=>{});
     if(args[0]=="--render-attachments"||args[0]=="--render-photo"){var t=data.Tasks.Find(x=>x.subtasks.Count>0);var pic=Path.Combine(temp,"Макет экрана.png");SamplePicture(pic);data.Attach(t,pic);data.Attach(t,"Смета на ноябрь.pdf",new byte[]{1});t=data.Save(t,t.version);
      target=args[0]=="--render-photo"?(Window)new PhotoViewer(null,t.attachments.FindAll(a=>a.IsImage),0,a=>data.AttachmentPath(t,a)):new TaskEditor(null,t,data.ProjectNames,x=>true,x=>{},null,data);
      // Миниатюры грузятся в фоне — даём им прийти до снимка.
      Thread.Sleep(700);System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(System.Windows.Threading.DispatcherPriority.Background,new Action(()=>{}));}
-    var visual=(FrameworkElement)target.Content;int width=target==preview||target is PhotoViewer?1280:620,height=target==preview||target is PhotoViewer?840:args[0]=="--render-attachments"?1080:800;
+    var visual=(FrameworkElement)target.Content;int width=target==preview||target is PhotoViewer?1280:620,height=target==preview||target is PhotoViewer?840:args[0]=="--render-attachments"?1080:args[0]=="--render-team-history"?1300:800;
     visual.Measure(new Size(width,height));visual.Arrange(new Rect(0,0,width,height));visual.UpdateLayout();if(args[0]=="--render-toggle"){UI.SetTheme("light");visual.UpdateLayout();}
     var bitmap=new System.Windows.Media.Imaging.RenderTargetBitmap(width,height,96,96,System.Windows.Media.PixelFormats.Pbgra32);bitmap.Render(visual);
     var png=new System.Windows.Media.Imaging.PngBitmapEncoder();png.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));using(var file=File.Create(args[1]))png.Save(file);
@@ -40,7 +41,7 @@ namespace Ritm {
      Thread.CurrentThread.CurrentCulture=new CultureInfo("ru-RU");Thread.CurrentThread.CurrentUICulture=new CultureInfo("ru-RU");
      FrameworkElement.LanguageProperty.OverrideMetadata(typeof(FrameworkElement),new FrameworkPropertyMetadata(XmlLanguage.GetLanguage("ru-RU")));
      var app=new Application();UI.InstallStyles();app.DispatcherUnhandledException+=(s,e)=>{MessageBox.Show("Действие не завершено.\n"+e.Exception.Message,"Ритм",MessageBoxButton.OK,MessageBoxImage.Information);e.Handled=true;};
-     string root=args.Length==2&&args[0]=="--data"?Path.GetFullPath(args[1]):Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"RitmPlanner","Data");var store=new Store(root);app.Run(new MainWindow(store));return 0;
+     string root=args.Length==2&&args[0]=="--data"?Path.GetFullPath(args[1]):Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"RitmPlanner","Data");var store=new Store(root,true);app.Run(new MainWindow(store));return 0;
     }catch(Exception e){MessageBox.Show("Не удалось открыть Ритм.\n"+e.Message+"\nЛокальные данные не удалены.","Ритм",MessageBoxButton.OK,MessageBoxImage.Error);return 1;}
    }
   }
