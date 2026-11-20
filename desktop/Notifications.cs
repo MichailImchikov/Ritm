@@ -24,6 +24,7 @@ namespace Ritm {
   public static readonly NotificationKind MainUpdated=new NotificationKind("git.main","Обновление main","На сервере origin появился новый коммит main, которого нет в локальной main.");
   public static readonly NotificationKind FolderChanged=new NotificationKind("folder.changed","Изменения в папке","Новые и изменённые файлы в отслеживаемой папке.");
   public static readonly NotificationKind BuildDone=new NotificationKind("build.done","Сборка Unity завершена","Сборка Unity на стенде закончилась.");
+  public static readonly NotificationKind Whip=new NotificationKind("team.whip","Хлыст от участника","Участник общего проекта поторопил вас ударом хлыста (со звуком).");
   public static ReadOnlyCollection<NotificationKind> All {get{return registry.AsReadOnly();}}
   public static bool Enabled(Preferences p){return !p.NotificationsMuted;}
   // Выбор хранится только для видов, которые пользователь переключал; для остальных действует значение по умолчанию.

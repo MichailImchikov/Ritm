@@ -51,12 +51,24 @@ namespace Ritm {
   void UpdateThemeButton(){if(themeButton==null)return;var row=(DockPanel)themeButton.Content;((TextBlock)row.Children[0]).Text=UI.Dark?"":"";((TextBlock)row.Children[1]).Text=UI.Dark?"Светлая тема":"Тёмная тема";}
   void Settings(){new SettingsWindow(this,store,()=>{UI.SetPalette(store.Settings.Palette);UI.SetTheme(store.Settings.Theme);UpdateThemeButton();Refresh();},SyncNow).ShowDialog();Refresh();SyncNow();}
   void UpdateStatus(){string team=store.TeamStatus??(store.Teams.Count>0?"Общие проекты на связи":null);sync.Text=(team!=null?team+"  ·  ":"")+store.Status;}
+  // Хлыст: анимация и звук сразу у отправителя, удар уходит в папку проекта в фоне.
+  async void Whip(string name){
+   string target=project;WhipPing ping;try{ping=store.MakeWhip(target,name);}catch(Exception e){Toast(e.Message);return;}
+   WhipFx.Strike(dragLayer,Mouse.GetPosition(dragLayer));WhipFx.Crack();string path=store.TeamPath(target);
+   try{await Task.Run(()=>Store.SendWhip(path,ping));Toast("«"+Short(name)+"» получил удар хлыстом");}catch(Exception e){Toast("Хлыст не долетел: "+e.Message);}
+  }
+  void NotifyWhips(){
+   foreach(var group in store.TakeWhips().GroupBy(w=>w.project)){
+    var list=group.ToList();string target=group.Key;var senders=list.Select(w=>w.from).Distinct().ToList();
+    if(notifier.Show(Notifications.Whip,"Удар хлыстом · "+Short(ProjectDisplay(target)),(senders.Count==1?"«"+Short(senders[0])+"»":"«"+string.Join("», «",senders.Select(Short))+"»")+(list.Count>1?" поторапливают вас ("+list.Count+")":" поторапливает вас"),()=>Go("board",target)))WhipFx.Crack();
+   }
+  }
   // Синхронизация с сервером идёт в фоне: окно не ждёт сеть. Запрос во время уже идущей синхронизации запускает ещё один проход сразу после неё.
   async void SyncNow(){
    if(syncBusy){syncAgain=true;return;}
    syncBusy=true;bool changed=false;
    try{changed=await store.SyncAsync();}catch(Exception e){store.Status="Локально сохранено. Синхронизация: "+e.Message;}finally{syncBusy=false;}
-   if(closed)return;if(changed)Refresh();else UpdateStatus();NotifyTeamChanges();
+   if(closed)return;if(changed)Refresh();else UpdateStatus();NotifyTeamChanges();NotifyWhips();
    if(syncAgain){syncAgain=false;SyncNow();}
   }
   void Go(string next,string name=""){rendering=true;view=next;project=name;bool serverSaved;gitView=name!=""&&name!="Без проекта"&&(next=="board"||next=="list")&&store.Settings.ProjectServerViews!=null&&store.Settings.ProjectServerViews.TryGetValue(name,out serverSaved)&&serverSaved;if(name==""&&(next=="board"||next=="list"))store.SetTaskLayout("tab:tasks",next);search.Clear();importance.SelectedIndex=0;filter.SelectedIndex=0;if(person!=Mine)person="";rendering=false;Refresh();}
@@ -94,7 +106,7 @@ namespace Ritm {
   Border PersonChip(TaskItem t){bool mine=store.IsMine(t);var p=new StackPanel{Orientation=Orientation.Horizontal};var a=Avatar(t.assignee,15);a.Margin=new Thickness(0,0,5,0);p.Children.Add(a);p.Children.Add(UI.Text(mine?"Вы":t.assignee,10,mine?UI.B("#A65C3D"):UI.Ink,true));return new Border{Child=p,Background=mine?UI.B("#E9EDE1"):UI.Rail,CornerRadius=new CornerRadius(8),Padding=new Thickness(3,2,8,2),Margin=new Thickness(0,0,6,6),ToolTip="Исполнитель: "+t.assignee+(t.createdBy!=null?"\nСоздал(а): "+t.createdBy:"")};}
   // Полоса участников над доской общего проекта: открытые задачи каждого, щелчок — показать только его задачи.
   UIElement PeopleStrip(){var strip=new WrapPanel{Margin=new Thickness(0,14,0,0)};var open=Tasks.Where(t=>t.category==project&&!t.completed).ToList();string me=store.Me(project);
-   Action<string,UIElement,string,int> add=(key,face,label,count)=>{var row=new StackPanel{Orientation=Orientation.Horizontal};if(face!=null)row.Children.Add(face);var text=UI.Text(label,12,person==key?UI.B("#A65C3D"):UI.Ink,person==key);text.Margin=new Thickness(face!=null?8:0,0,0,0);row.Children.Add(text);var n=UI.Text(count.ToString(),11,UI.Muted);n.Margin=new Thickness(7,0,0,0);row.Children.Add(n);var b=UI.Button("",()=>{person=person==key?"":key;Refresh();});b.Content=row;b.Padding=new Thickness(face!=null?6:12,5,12,5);b.Margin=new Thickness(0,0,8,8);b.Background=person==key?UI.B("#E9EDE1"):UI.Paper;b.ToolTip=person==key?"Показать всех":"Показать только эти задачи";strip.Children.Add(b);};
+   Action<string,UIElement,string,int> add=(key,face,label,count)=>{var row=new StackPanel{Orientation=Orientation.Horizontal};if(face!=null)row.Children.Add(face);var text=UI.Text(label,12,person==key?UI.B("#A65C3D"):UI.Ink,person==key);text.Margin=new Thickness(face!=null?8:0,0,0,0);row.Children.Add(text);var n=UI.Text(count.ToString(),11,UI.Muted);n.Margin=new Thickness(7,0,0,0);row.Children.Add(n);var b=UI.Button("",()=>{person=person==key?"":key;Refresh();});b.Content=row;b.Padding=new Thickness(face!=null?6:12,5,12,5);b.Margin=new Thickness(0,0,8,8);b.Background=person==key?UI.B("#E9EDE1"):UI.Paper;b.ToolTip=person==key?"Показать всех":"Показать только эти задачи";if(key!=Mine&&key!=Nobody){b.ToolTip+=" · ПКМ — поторопить хлыстом";b.MouseRightButtonUp+=(s,e)=>{e.Handled=true;Whip(key);};}strip.Children.Add(b);};
    add(Mine,Avatar(me,22),"Мои",open.Count(t=>Store.SamePerson(t.assignee,me)));foreach(var name in store.Members(project).Where(n=>!Store.SamePerson(n,me)))add(name,Avatar(name,22),name,open.Count(t=>Store.SamePerson(t.assignee,name)));add(Nobody,null,"Без исполнителя",open.Count(t=>t.assignee==null));return strip;}
   void Assign(TaskItem task,string name){var t=task.Clone();t.assignee=name;if(Persist(t))Toast(name==null?"Исполнитель снят":"«"+Short(t.title)+"» → "+(Store.SamePerson(name,store.Me(t.category))?"вам":name));}
   Button Nav(string text,Action action,bool active,string glyph=null,int badge=0,string dot=null){

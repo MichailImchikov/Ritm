@@ -16,10 +16,10 @@ namespace Ritm {
   sealed class SyncTarget {public string Root,Tasks;public TeamLink Team;}
   sealed class RemoteFile {public string Path;public DateTime Stamp;public TaskItem Item;public bool Broken;}
   sealed class MemberFile {public DateTime Stamp;public string Name;}
-  sealed class TargetScan {public SyncTarget Target;public string Error;public readonly List<RemoteFile> Files=new List<RemoteFile>();public Dictionary<string,MemberFile> Members;}
+  sealed class TargetScan {public SyncTarget Target;public string Error;public readonly List<RemoteFile> Files=new List<RemoteFile>();public Dictionary<string,MemberFile> Members;public readonly List<KeyValuePair<string,WhipPing>> Pings=new List<KeyValuePair<string,WhipPing>>();}
   sealed class PendingWrite {public SyncTarget Target;public string Path,Json,Error;public TaskItem Item;public DateTime Stamp;}
   sealed class PendingCopy {public string Local,Remote;}
-  sealed class SyncPlan {public readonly List<SyncTarget> Targets=new List<SyncTarget>();public Dictionary<string,DateTime> Known;public readonly Dictionary<string,Dictionary<string,MemberFile>> Members=new Dictionary<string,Dictionary<string,MemberFile>>(StringComparer.OrdinalIgnoreCase);}
+  sealed class SyncPlan {public readonly List<SyncTarget> Targets=new List<SyncTarget>();public Dictionary<string,DateTime> Known;public HashSet<string> KnownPings;public readonly Dictionary<string,Dictionary<string,MemberFile>> Members=new Dictionary<string,Dictionary<string,MemberFile>>(StringComparer.OrdinalIgnoreCase);}
   sealed class PushPlan {public readonly List<PendingWrite> Writes=new List<PendingWrite>();public readonly List<PendingCopy> Copies=new List<PendingCopy>();}
   // Файлы участников по папке проекта: перечитываются только после изменения.
   readonly Dictionary<string,Dictionary<string,MemberFile>> memberFiles=new Dictionary<string,Dictionary<string,MemberFile>>(StringComparer.OrdinalIgnoreCase);
@@ -43,7 +43,7 @@ namespace Ritm {
   }
 
   SyncPlan PlanSync(){
-   var plan=new SyncPlan{Known=seen.ToDictionary(kv=>kv.Key,kv=>kv.Value.Stamp,StringComparer.OrdinalIgnoreCase)};
+   var plan=new SyncPlan{Known=seen.ToDictionary(kv=>kv.Key,kv=>kv.Value.Stamp,StringComparer.OrdinalIgnoreCase),KnownPings=new HashSet<string>(pingSeen,StringComparer.OrdinalIgnoreCase)};
    foreach(var link in Teams.ToList()){
     // Недоступный сервер может отвечать секундами — после ошибки повторяем не чаще раза в 30 секунд.
     DateTime wait;if(retryAt.TryGetValue(link.Name,out wait)&&DateTime.UtcNow<wait)continue;
@@ -66,7 +66,7 @@ namespace Ritm {
      if(!plan.Known.TryGetValue(file.Path,out known)||known!=file.Stamp){try{file.Item=ReadRecord(file.Path);}catch{file.Broken=true;}}
      scan.Files.Add(file);
     }
-    if(target.Team!=null){Dictionary<string,MemberFile> known;plan.Members.TryGetValue(target.Root,out known);scan.Members=ScanMembers(target.Root,known);}
+    if(target.Team!=null){Dictionary<string,MemberFile> known;plan.Members.TryGetValue(target.Root,out known);scan.Members=ScanMembers(target.Root,known);ScanPings(target.Root,plan.KnownPings,scan.Pings);}
    }catch(Exception e){scan.Error=e.Message;}
    return scan;
   }
@@ -105,7 +105,7 @@ namespace Ritm {
       if(Absorb(incoming.Clone())){changed=true;Track(target.Team,before,items[incoming.id]);}
      }else if(!IsTeamName(incoming.category)&&Absorb(incoming.Clone()))changed=true;
     }
-    if(target.Team!=null){memberFiles[target.Root]=scan.Members;roster[target.Team.Name]=scan.Members.Values.Where(m=>m.Name!=null).Select(m=>m.Name).ToList();}
+    if(target.Team!=null){ApplyPings(target,scan.Pings);memberFiles[target.Root]=scan.Members;roster[target.Team.Name]=scan.Members.Values.Where(m=>m.Name!=null).Select(m=>m.Name).ToList();}
     else{SyncError=broken;Status=broken?"Есть нечитаемые файлы в общей папке. Локальные задачи сохранены.":"Общая папка обновлена · "+DateTime.Now.ToString("HH:mm");}
     lastScans[target.Tasks]=scan;
    }
