@@ -100,13 +100,13 @@ namespace Ritm {
    string old=link.User;
    if(!SamePerson(old,user)){
     // Сначала получаем последние версии задач; при недоступной сети смену можно повторить.
-    SyncTeam(link);
+    retryAt.Remove(project);Sync();var down=TeamError(project);if(down!=null)throw new IOException(down);
     foreach(var task in AllRecords.Where(t=>!t.deleted&&t.category==project&&(SamePerson(t.assignee,old)||SamePerson(t.createdBy,old))).ToList()){
      if(SamePerson(task.assignee,old))task.assignee=user;
      if(SamePerson(task.createdBy,old))task.createdBy=user;
      Save(task,task.version);
     }
-    SyncTeam(link);
+    Sync();
     var replacement=new TeamLink{Path=link.Path,User=user};WriteMember(replacement);
     File.Delete(MemberPath(link,old));
    }else WriteMember(new TeamLink{Path=link.Path,User=user});
